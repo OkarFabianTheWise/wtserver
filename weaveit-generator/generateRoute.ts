@@ -16,13 +16,13 @@ function makeContentId() {
 const outputDir = path.join(process.cwd(), 'src', 'output');
 
 // POST /api/generate
-// POST /api/generate
-router.post('/generate', async (req: Request, res: Response) => {
+const generateHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     let { transactionSignature, script, title } = req.body;
 
     if (!script || typeof script !== 'string' || script.trim() === '') {
-      return res.status(400).json({ error: 'Missing script in request body' });
+      res.status(400).json({ error: 'Missing script in request body' });
+      return;
     }
 
     if (!transactionSignature) {
@@ -49,10 +49,14 @@ router.post('/generate', async (req: Request, res: Response) => {
       videoUrl: `/output/${transactionSignature}.mp4`,
       message: 'Educational tutorial video generated successfully',
     });
+    return;
   } catch (error) {
     console.error('weaveit-generator: Video generation error:', error);
     res.status(500).json({ error: 'Failed to generate video' });
+    return;
   }
-});
+};
+
+router.post('/generate', generateHandler);
 
 export default router;

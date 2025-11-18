@@ -9,11 +9,12 @@ const router = express.Router();
 const outputDir = path.join(process.cwd(), 'src', 'output');
 
 // GET /api/videos/status/:id
-router.get('/videos/status/:id', (req: Request, res: Response) => {
+router.get<{ id: string }>('/videos/status/:id', (req, res) => {
   try {
     const { id } = req.params;
     if (!id) {
-      return res.status(400).json({ error: 'No video ID provided' });
+      res.status(400).json({ error: 'No video ID provided' });
+      return;
     }
 
     // Check for both .mp4 and .mp3
@@ -23,7 +24,8 @@ router.get('/videos/status/:id', (req: Request, res: Response) => {
     const audioExists = fs.existsSync(audioPath);
 
     if (!videoExists && !audioExists) {
-      return res.status(404).json({ error: 'Video not found' });
+      res.status(404).json({ error: 'Video not found' });
+      return;
     }
 
     res.json({
@@ -35,7 +37,8 @@ router.get('/videos/status/:id', (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('weaveit-generator: Error in /api/videos/status/:id:', err);
-    return res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error' });
+    return;
   }
 });
 

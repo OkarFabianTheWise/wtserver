@@ -1,6 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-// Route handlers moved to `weaveit-generator/` for cleaner organization
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -25,8 +24,6 @@ app.use('/output', express.static(path.join(__dirname, 'output')));
 // Mount API routers under `/api` so frontend can call `/api/generate` and `/api/videos/status/:id`
 app.use('/api', videosStatusRoute);
 app.use('/api', generateRoute);
-
-// (Video generation endpoint moved to generateRoute.ts)
 
 // Video serving endpoint
 app.get('/api/videos/:transactionSignature', (req, res) => {
