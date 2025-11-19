@@ -1,57 +1,72 @@
 import express from 'express';
 import type { Request, Response } from 'express';
-import path from 'path';
-import fs from 'fs';
-import { enhanceScript } from '../src/codeAnalyzer.ts';
-import { generateSpeech } from '../src/textToSpeech.ts';
-import { generateScrollingScriptVideo } from '../src/videoGenerator.ts';
+import { enhanceScript } from '../src/codeAnalyzer';
+import { generateSpeechBuffer } from '../src/textToSpeech';
+import { generateScrollingScriptVideoBuffer } from '../src/videoGenerator';
+import { createVideoJob, updateJobStatus, storeVideo } from '../src/db';
 
 const router = express.Router();
 
-function makeContentId() {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-// Use the server's `src/output` directory so static serving matches
-const outputDir = path.join(process.cwd(), 'src', 'output');
-
 // POST /api/generate
 const generateHandler = async (req: Request, res: Response): Promise<void> => {
+  let jobId: string | null = null;
+  
   try {
-    let { transactionSignature, script, title } = req.body;
+    let { walletAddress, script, title } = req.body;
 
     if (!script || typeof script !== 'string' || script.trim() === '') {
       res.status(400).json({ error: 'Missing script in request body' });
       return;
     }
 
-    if (!transactionSignature) {
-      transactionSignature = makeContentId();
+    // Wallet address is required for database storage
+    if (!walletAddress || typeof walletAddress !== 'string') {
+      res.status(400).json({ error: 'Missing walletAddress in request body' });
+      return;
     }
 
-    console.log('weaveit-generator: Processing tutorial request:', { title, transactionSignature });
+    console.log('weaveit-generator: Processing tutorial request:', { title, walletAddress });
 
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
-    }
+    // Create job in database
+    jobId = await createVideoJob(walletAddress, script);
+    console.log('Created job:', jobId);
+
+    // Update status to generating
+    await updateJobStatus(jobId, 'generating');
 
     // Enhance the script for narration
     const explanation = await enhanceScript(script);
-    const audioPath = path.join(outputDir, `${transactionSignature}.mp3`);
-    const videoPath = path.join(outputDir, `${transactionSignature}.mp4`);
+    
+    // Generate speech buffer (no file saving)
+    const audioBuffer = await generateSpeechBuffer(explanation);
+    console.log(`Generated audio: ${audioBuffer.length} bytes`);
 
-    // Generate speech and video (these may take time)
-    await generateSpeech(explanation, audioPath);
-    await generateScrollingScriptVideo(script, audioPath, videoPath);
+    // Generate video buffer (uses temp files internally but returns buffer)
+    const videoBuffer = await generateScrollingScriptVideoBuffer(script, audioBuffer);
+    console.log(`Generated video: ${videoBuffer.length} bytes`);
+
+    // Store video in database
+    const videoId = await storeVideo(jobId, walletAddress, videoBuffer);
+    console.log('Stored video in database:', videoId);
+
+    // Update job status to completed
+    await updateJobStatus(jobId, 'completed');
 
     res.json({
-      contentId: transactionSignature,
-      videoUrl: `/output/${transactionSignature}.mp4`,
+      jobId,
+      videoId,
+      status: 'completed',
       message: 'Educational tutorial video generated successfully',
     });
     return;
   } catch (error) {
     console.error('weaveit-generator: Video generation error:', error);
+    
+    // Update job status to failed if we have a jobId
+    if (jobId) {
+      await updateJobStatus(jobId, 'failed', String(error)).catch(console.error);
+    }
+    
     res.status(500).json({ error: 'Failed to generate video' });
     return;
   }

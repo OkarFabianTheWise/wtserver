@@ -1,6 +1,7 @@
 import ffmpeg from 'fluent-ffmpeg';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { CanvasRenderingContext2D, createCanvas } from 'canvas';
 // import gTTS from 'node-gtts';
 
@@ -750,6 +751,61 @@ export async function generateScrollingScriptVideo(script: string, audioPath: st
     fs.unlinkSync(tempVideoPath);
   } catch (err) {
     console.error('❌ Error in generateScrollingScriptVideo:', err);
+    throw err;
+  }
+}
+
+/**
+ * Generate scrolling script video and return as buffer (for database storage)
+ * Uses OS temp directory for ffmpeg processing, then cleans up automatically
+ * Heroku-compatible: uses ephemeral /tmp directory with immediate cleanup
+ */
+export async function generateScrollingScriptVideoBuffer(script: string, audioBuffer: Buffer): Promise<Buffer> {
+  // Use OS temp directory instead of local directory
+  const tempDir = os.tmpdir();
+  const tempId = `weaveit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const audioPath = path.join(tempDir, `${tempId}.mp3`);
+  const videoPath = path.join(tempDir, `${tempId}.mp4`);
+  
+  // Track intermediate files created by generateScrollingScriptVideo
+  const scrollImagePath = videoPath.replace(/\.mp4$/, '_scroll.png');
+  const tempVideoPath = videoPath.replace(/\.mp4$/, '_video.mp4');
+
+  try {
+    // Write audio buffer to temp file
+    fs.writeFileSync(audioPath, audioBuffer);
+    
+    // Generate video using existing function
+    await generateScrollingScriptVideo(script, audioPath, videoPath);
+    
+    // Read video as buffer
+    const videoBuffer = fs.readFileSync(videoPath);
+    
+    // Cleanup all temp files (including intermediate ones)
+    const filesToCleanup = [audioPath, videoPath, scrollImagePath, tempVideoPath];
+    filesToCleanup.forEach(file => {
+      if (fs.existsSync(file)) {
+        try {
+          fs.unlinkSync(file);
+        } catch (cleanupErr) {
+          console.warn(`Failed to cleanup temp file ${file}:`, cleanupErr);
+        }
+      }
+    });
+    
+    return videoBuffer;
+  } catch (err) {
+    // Cleanup on error - ensure no files are left behind
+    const filesToCleanup = [audioPath, videoPath, scrollImagePath, tempVideoPath];
+    filesToCleanup.forEach(file => {
+      if (fs.existsSync(file)) {
+        try {
+          fs.unlinkSync(file);
+        } catch (cleanupErr) {
+          console.warn(`Failed to cleanup temp file ${file}:`, cleanupErr);
+        }
+      }
+    });
     throw err;
   }
 }

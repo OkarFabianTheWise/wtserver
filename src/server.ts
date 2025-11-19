@@ -1,42 +1,68 @@
 import express from 'express';
 import cors from 'cors';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import videosStatusRoute from '../weaveit-generator/videosStatusRoute.ts';
-import generateRoute from '../weaveit-generator/generateRoute.ts';
-import { testConnection } from './db.ts';
+import path from 'path';
+import videosStatusRoute from '../weaveit-generator/videosStatusRoute';
+import generateRoute from '../weaveit-generator/generateRoute';
+import { testConnection, getVideoByJobId, getVideoByVideoId } from './db';
 
 // Load environment variables from root .env file
 dotenv.config({ path: path.join(process.cwd(), '.env') });
-
-// Get __dirname equivalent for ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 3001;
 
 app.use(cors());
 app.use(express.json());
-app.use('/output', express.static(path.join(__dirname, 'output')));
 
 // Mount API routers under `/api` so frontend can call `/api/generate` and `/api/videos/status/:id`
 app.use('/api', videosStatusRoute);
 app.use('/api', generateRoute);
 
-// Video serving endpoint
-app.get('/api/videos/:transactionSignature', (req, res) => {
-  const { transactionSignature } = req.params;
-  const videoPath = path.join(__dirname, 'output', `${transactionSignature}.mp4`);
+// Video serving endpoint - serves video data from database by job ID
+app.get('/api/videos/job/:jobId', async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    
+    const videoBuffer = await getVideoByJobId(jobId);
 
-  if (!fs.existsSync(videoPath)) {
-    res.status(404).json({ error: 'Video not found' });
-    return;
+    if (!videoBuffer) {
+      res.status(404).json({ error: 'Video not found' });
+      return;
+    }
+
+    // Set proper headers for video streaming
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Length', videoBuffer.length);
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.send(videoBuffer);
+  } catch (err) {
+    console.error('Error serving video:', err);
+    res.status(500).json({ error: 'Failed to retrieve video' });
   }
+});
 
-  res.sendFile(videoPath);
+// Video serving endpoint - serves video data from database by video ID
+app.get('/api/videos/:videoId', async (req, res) => {
+  try {
+    const { videoId } = req.params;
+    
+    const videoBuffer = await getVideoByVideoId(videoId);
+
+    if (!videoBuffer) {
+      res.status(404).json({ error: 'Video not found' });
+      return;
+    }
+
+    // Set proper headers for video streaming
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Length', videoBuffer.length);
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.send(videoBuffer);
+  } catch (err) {
+    console.error('Error serving video:', err);
+    res.status(500).json({ error: 'Failed to retrieve video' });
+  }
 });
 
 // DB health endpoint
