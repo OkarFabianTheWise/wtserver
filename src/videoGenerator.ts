@@ -5,17 +5,11 @@ import os from 'os';
 import { CanvasRenderingContext2D, createCanvas } from 'canvas';
 // import gTTS from 'node-gtts';
 
-// const gTTS = require('node-gtts');
-// const gtts = gTTS('en');
+const FF_BASE = process.env.FFMPEG_PATH || "/app/.heroku/ffmpeg/bin";
 
-// function generateAudioFromText(text: string, outputPath: string): Promise<void> {
-//   return new Promise((resolve, reject) => {
-//     gtts.save(outputPath, text, () => {
-//       console.log(`✅ Audio saved to ${outputPath}`);
-//       resolve();
-//     });
-//   });
-// }
+ffmpeg.setFfmpegPath(path.join(FF_BASE, "ffmpeg"));
+ffmpeg.setFfprobePath(path.join(FF_BASE, "ffprobe"));
+
 
 /**
  * Get the duration of the audio with better precision.
