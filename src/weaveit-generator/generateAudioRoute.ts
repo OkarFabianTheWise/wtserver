@@ -1,8 +1,8 @@
 import express from 'express';
 import type { Request, Response } from 'express';
-import { enhanceScript } from '../codeAnalyzer';
-import { generateSpeechBuffer } from '../textToSpeech';
-import { createVideoJob, updateJobStatus, storeAudio, deductUserPoints } from '../db';
+import { enhanceScript } from '../codeAnalyzer.js';
+import { generateSpeechBuffer } from '../textToSpeech.js';
+import { createVideoJob, updateJobStatus, storeAudio, deductUserPoints } from '../db.js';
 
 const router = express.Router();
 

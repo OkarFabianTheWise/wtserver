@@ -1,6 +1,6 @@
 import express from 'express';
 // import type { Request, Response } from 'express';
-import { getJobStatus, getVideo } from '../db';
+import { getJobStatus, getVideo } from '../db.js';
 
 const router = express.Router();
 
