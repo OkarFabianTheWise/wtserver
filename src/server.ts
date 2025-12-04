@@ -5,9 +5,9 @@ import path from 'path';
 import videosStatusRoute from './weaveit-generator/videosStatusRoute.js';
 import generateRoute from './weaveit-generator/generateRoute.js';
 import generateAudioRoute from './weaveit-generator/generateAudioRoute.js';
-import { testConnection, getVideoByJobId, getVideoByVideoId, getVideosByWallet, getAudioByJobId, getAudioByAudioId, getContentByWallet } from './db';
-import paymentsRoute from './paymentsRoute';
-import usersRoute from './usersRoute';
+import { testConnection, getVideoByJobId, getVideoByVideoId, getVideosByWallet, getAudioByJobId, getAudioByAudioId, getContentByWallet } from './db.js';
+import paymentsRoute from './paymentsRoute.js';
+import usersRoute from './usersRoute.js';
 
 // Load environment variables from root .env file
 dotenv.config({ path: path.join(process.cwd(), '.env') });
