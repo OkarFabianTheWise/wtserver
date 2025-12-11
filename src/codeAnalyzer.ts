@@ -95,3 +95,81 @@ ${script}
     return '';
   }
 }
+
+/**
+ * Convert technical content into narrative scenes for 2D animation
+ * Returns a story with sequential scenes that can be visualized
+ */
+export interface NarrativeScene {
+  sceneNumber: number;
+  description: string;
+  narration: string;
+  visualElements: string[];
+  duration: number; // seconds
+}
+
+export async function generateNarrativeStoryboard(script: string): Promise<NarrativeScene[]> {
+  try {
+    const prompt = `
+You are a storytelling assistant for educational tutorials. 
+
+Input: technical content (code snippet, blockchain concept, or system description).
+Output: a narrative short story that explains the concept using simple 2D characters, objects, or shapes, you can use market scenerios, simple kids game scenerio, dad and mum joke scenerios to make it simple to understand.
+
+Guidelines:
+- Use stick-figure or simple shapes as characters (circles for heads, lines for bodies, etc).
+- Describe visual actions (e.g., "three market women write in their ledgers; lines connect the books to show consensus").
+- Include labels or simple props to clarify concepts.
+- Divide the story into sequential scenes (5-8 scenes max).
+- Keep each scene description concise, 1-2 sentences maximum.
+- For each scene, provide both a visual description and narration.
+- Emphasize cause-and-effect so a learner can follow the concept.
+- Each scene should take about 3 seconds to display.
+
+Respond with ONLY valid JSON in this exact format:
+{
+  "scenes": [
+    {
+      "sceneNumber": 1,
+      "description": "visual description of what appears on screen",
+      "narration": "what the narrator says (1-2 sentences)",
+      "visualElements": ["element1", "element2", ...],
+      "duration": 3
+    }
+  ]
+}
+
+Technical content to narrate:
+
+${script}
+    `;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        {
+          role: "system",
+          content: "You are a visual storytelling expert. Convert technical concepts into simple 2D animated scenes with stick figures, shapes, and props. Respond ONLY with valid JSON."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      temperature: 0.7,
+      max_tokens: 2000
+    });
+
+    const content = response.choices[0].message.content?.trim() || '{}';
+    
+    // Extract JSON from response (in case there's extra text)
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : content;
+    
+    const parsed = JSON.parse(jsonStr);
+    return parsed.scenes || [];
+  } catch (error) {
+    console.error('Error generating narrative storyboard:', error);
+    return [];
+  }
+}

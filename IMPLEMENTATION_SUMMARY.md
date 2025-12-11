@@ -295,3 +295,73 @@ The original functions (`generateSpeech`, `generateScrollingScriptVideo`) are st
 **Implementation Date**: November 19, 2025  
 **Status**: ✅ Complete - No errors found  
 **Migration Guide**: See `DB_MIGRATION.md`
+
+---
+
+# Narrative 2D Animation System (December 11, 2025)
+
+## ✅ Feature Implementation: Narrative-Driven Animation Videos
+
+A complete 2D animation video generator that transforms technical content into short story-driven animations with stick figures, shapes, and props.
+
+### Components Added
+
+#### 1. **Narrative Generation** (`src/codeAnalyzer.ts`)
+
+Added:
+
+- `NarrativeScene` interface - Structured scene format
+- `generateNarrativeStoryboard(script)` - GPT-4 powered narrative generation
+
+#### 2. **Animation Engine** (`src/narrativeAnimationGenerator.ts`)
+
+New module with visual primitives and rendering:
+
+- `drawStickFigure()` - Animated characters
+- `drawRectangle()` - Props (ledgers, books)
+- `drawCoin()` - Coins with shine effect
+- `drawArrow()` - Flow indicators
+- `generateNarrativeVideoBuffer()` - Core function
+
+#### 3. **API Route** (`src/weaveit-generator/generateNarrativeRoute.ts`)
+
+New endpoint: **POST `/api/generate/narrative`**
+
+- 3 credits per narrative video
+- Full job tracking
+- Scene count in response
+
+#### 4. **Server Integration** (`src/server.ts`)
+
+Mounted narrative route and imported dependencies
+
+#### 5. **Database Support** (`src/db.ts`)
+
+Extended `createVideoJob()` with `'narrative'` job type
+
+### Key Features
+
+✅ AI-powered storytelling (GPT-4)
+✅ 2D animation with stick figures and props
+✅ Serverless compatible (buffer-based)
+✅ Credit-based billing (3 credits)
+✅ Full TypeScript support
+✅ No new dependencies (canvas + ffmpeg)
+
+### Files Changed
+
+**New:**
+
+- `src/narrativeAnimationGenerator.ts`
+- `src/weaveit-generator/generateNarrativeRoute.ts`
+- `NARRATIVE_ANIMATION.md`
+
+**Modified:**
+
+- `src/codeAnalyzer.ts`
+- `src/server.ts`
+- `src/db.ts`
+
+---
+
+**Status**: ✅ Complete and Ready for Testing

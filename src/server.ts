@@ -5,6 +5,7 @@ import path from 'path';
 import videosStatusRoute from './weaveit-generator/videosStatusRoute.js';
 import generateRoute from './weaveit-generator/generateRoute.js';
 import generateAudioRoute from './weaveit-generator/generateAudioRoute.js';
+import generateNarrativeRoute from './weaveit-generator/generateNarrativeRoute.js';
 import { testConnection, getVideoByJobId, getVideoByVideoId, getVideosByWallet, getAudioByJobId, getAudioByAudioId, getContentByWallet, getUserInfo, getCompletedJobsCount, getTotalDurationSecondsForWallet, getTotalUsersCount, getTotalVideosCreated, getTotalFailedJobs } from './db.js';
 import paymentsRoute from './paymentsRoute.js';
 import usersRoute from './usersRoute.js';
@@ -22,6 +23,7 @@ app.use(express.json());
 app.use('/api', videosStatusRoute);
 app.use('/api', generateRoute);
 app.use('/api', generateAudioRoute);
+app.use('/api', generateNarrativeRoute);
 app.use('/api', paymentsRoute);
 app.use('/api', usersRoute);
 

@@ -151,7 +151,7 @@ export async function createVideoJob(
   walletAddress: string,
   scriptBody: string,
   title?: string,
-  jobType: 'video' | 'audio' = 'video'
+  jobType: 'video' | 'audio' | 'narrative' = 'video'
 ): Promise<string> {
   await ensureUser(walletAddress);
   const result = await pool.query(
