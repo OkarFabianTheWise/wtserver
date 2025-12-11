@@ -451,7 +451,7 @@ export async function generateVideo(tutorialText: string, audioPath: string, fin
  * Uses OS temp directory for ffmpeg processing, then cleans up automatically
  * Ephemeral-compatible: uses ephemeral /tmp directory with immediate cleanup
  */
-export async function generateScrollingScriptVideo(
+export async function generateScrollingScriptVideoBuffer(
   script: string,
   audioBuffer: Buffer,
   jobId: string

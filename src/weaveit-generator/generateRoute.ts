@@ -62,7 +62,7 @@ const generateHandler = async (req: Request, res: Response): Promise<void> => {
     console.log(`Generated audio: ${audioBuffer.length} bytes`);
 
     // Generate video buffer (uses temp files internally but returns buffer)
-    const videoBuffer = await generateScrollingScriptVideoBuffer(script, audioBuffer);
+    const videoBuffer = await generateScrollingScriptVideoBuffer(script, audioBuffer, jobId);
     console.log(`Generated video: ${videoBuffer.length} bytes`);
 
     // Calculate duration from audio buffer (in seconds)
