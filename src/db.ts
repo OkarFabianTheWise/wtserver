@@ -407,3 +407,57 @@ export async function deductUserPoints(walletAddress: string, points: number): P
   }
   return result.rows[0]?.prompt_points || 0;
 }
+
+export async function saveScrollImage(
+  jobId: string,
+  imageBuffer: Buffer
+): Promise<string> {
+  if (!imageBuffer || imageBuffer.length === 0) {
+    throw new Error("saveScrollImage: imageBuffer is empty");
+  }
+
+  const result = await pool.query(
+    `
+    INSERT INTO scroll_images (job_id, image_data)
+    VALUES ($1, $2)
+    RETURNING image_id
+    `,
+    [jobId, imageBuffer]
+  );
+
+  return result.rows[0].image_id;
+}
+
+
+export async function getScrollImageByJobId(
+  jobId: string
+): Promise<Buffer | null> {
+  const result = await pool.query(
+    `
+    SELECT image_data 
+    FROM scroll_images
+    WHERE job_id = $1
+    ORDER BY created_at DESC
+    LIMIT 1
+    `,
+    [jobId]
+  );
+
+  return result.rows[0]?.image_data ?? null;
+}
+
+export async function saveScrollVideo(
+  jobId: string,
+  videoBuffer: Buffer
+): Promise<string> {
+  const result = await pool.query(
+    `
+    INSERT INTO scroll_videos (job_id, video_data)
+    VALUES ($1, $2)
+    RETURNING video_id
+    `,
+    [jobId, videoBuffer]
+  );
+
+  return result.rows[0].video_id;
+}
