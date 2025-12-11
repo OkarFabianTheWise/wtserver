@@ -1,7 +1,7 @@
 import ffmpeg from 'fluent-ffmpeg';
 import fs from 'fs';
 import path from 'path';
-// import os, { userInfo } from 'os';
+import os, { userInfo } from 'os';
 import { CanvasRenderingContext2D, createCanvas } from 'canvas';
 import { saveScrollImage, saveScrollVideo } from './db.js';
 
@@ -451,226 +451,164 @@ export async function generateVideo(tutorialText: string, audioPath: string, fin
  * Uses OS temp directory for ffmpeg processing, then cleans up automatically
  * Ephemeral-compatible: uses ephemeral /tmp directory with immediate cleanup
  */
-export async function generateScrollingScriptVideoBuffer(
-  script: string,
-  audioBuffer: Buffer,
-  jobId: string
-): Promise<Buffer> {
+
+/**
+ * Generate a scrolling video from script + audio
+ */
+export async function generateScrollingScriptVideo(script: string, audioPath: string, outputPath: string): Promise<void> {
   const width = 1280;
   const height = 720;
   const paddingX = 80;
   const paddingY = 60;
   const fontSize = 28;
   const lineSpacing = 1.8;
-  const fontFamily = "Arial, sans-serif";
-  const textColor = "#222";
-  const bgColor = "#fff";
+  const fontFamily = 'Arial, sans-serif';
+  const textColor = '#222';
+  const bgColor = '#fff';
 
-  try {
-    // ========== 1. CANVAS TEXT WRAPPING + DRAWING ==========
-    const dummy = createCanvas(width, height);
-    const ctx = dummy.getContext("2d");
-    ctx.font = `${fontSize}px ${fontFamily}`;
+  // Measure text
+  const dummyCanvas = createCanvas(width, height);
+  const ctx = dummyCanvas.getContext('2d');
+  ctx.font = `${fontSize}px ${fontFamily}`;
 
-    const paragraphs = script.split(/\n\s*\n/);
-    const wrappedLines: string[] = [];
-    const sections: { startLine: number; endLine: number; complexity: number }[] = [];
+  const paragraphs = script.split(/\n\s*\n/);
+  const wrappedLines: string[] = [];
+  const sections: { startLine: number; endLine: number; complexity: number }[] = [];
 
-    let currentLine = 0;
-    paragraphs.forEach((paragraph, pIndex) => {
-      const sectionStart = currentLine;
-      if (pIndex > 0) {
-        wrappedLines.push("");
-        currentLine++;
-      }
+  let currentLine = 0;
+  paragraphs.forEach((paragraph, pIndex) => {
+    if (pIndex > 0) { wrappedLines.push(''); currentLine++; }
+    const lines = paragraph.split(/\n/);
+    let complexity = 0;
+    lines.forEach(line => {
+      if (!line.trim()) { wrappedLines.push(''); currentLine++; return; }
+      const words = line.split(' ');
+      const avgWordLength = words.reduce((sum, w) => sum + w.length, 0) / words.length;
+      const hasCode = /[(){}\[\]<>]/.test(line);
+      const hasTech = /\b(function|class|const|let|var|import|export|async|await)\b/.test(line);
+      complexity += avgWordLength * (hasCode ? 1.5 : 1) * (hasTech ? 1.3 : 1);
 
-      const lines = paragraph.split("\n");
-      let complexityScore = 0;
-
-      lines.forEach((line) => {
-        if (line.trim() === "") {
-          wrappedLines.push("");
+      let currentLineText = '';
+      words.forEach(word => {
+        const testLine = currentLineText ? `${currentLineText} ${word}` : word;
+        if (ctx.measureText(testLine).width <= width - 2 * paddingX) {
+          currentLineText = testLine;
+        } else {
+          if (currentLineText) wrappedLines.push(currentLineText);
           currentLine++;
-          return;
+          currentLineText = word;
         }
-
-        const words = line.split(" ");
-        const avgWordLength =
-          words.reduce((sum, w) => sum + w.length, 0) / words.length;
-
-        const hasCode = /[(){}\[\]<>]/.test(line);
-        const hasTech =
-          /\b(function|class|const|let|var|import|export|async|await)\b/.test(
-            line
-          );
-
-        const lineComplexity =
-          avgWordLength * (hasCode ? 1.5 : 1) * (hasTech ? 1.3 : 1);
-        complexityScore += lineComplexity;
-
-        let buf = "";
-        words.forEach((w) => {
-          const test = buf ? buf + " " + w : w;
-          if (ctx.measureText(test).width <= width - paddingX * 2) {
-            buf = test;
-          } else {
-            wrappedLines.push(buf);
-            currentLine++;
-            buf = w;
-          }
-        });
-
-        wrappedLines.push(buf);
-        currentLine++;
       });
+      if (currentLineText) { wrappedLines.push(currentLineText); currentLine++; }
+    });
+    sections.push({ startLine: currentLine - lines.length, endLine: currentLine - 1, complexity });
+    if (pIndex < paragraphs.length - 1) { wrappedLines.push(''); currentLine++; }
+  });
 
-      sections.push({
-        startLine: sectionStart,
-        endLine: currentLine - 1,
-        complexity: complexityScore,
-      });
+  const lineHeight = fontSize * lineSpacing;
+  const totalHeight = wrappedLines.length * lineHeight + 2 * paddingY + height;
 
-      if (pIndex < paragraphs.length - 1) {
-        wrappedLines.push("");
-        currentLine++;
+  // Create tall canvas
+  const canvas = createCanvas(width, totalHeight);
+  const scrollCtx = canvas.getContext('2d');
+  scrollCtx.fillStyle = bgColor;
+  scrollCtx.fillRect(0, 0, width, totalHeight);
+  scrollCtx.font = `${fontSize}px ${fontFamily}`;
+  scrollCtx.fillStyle = textColor;
+  scrollCtx.textBaseline = 'top';
+  wrappedLines.forEach((line, i) => {
+    if (line.trim()) scrollCtx.fillText(line, paddingX, paddingY + i * lineHeight);
+  });
+
+  const tallImagePath = outputPath.replace(/\.mp4$/, '_scroll.png');
+  fs.writeFileSync(tallImagePath, canvas.toBuffer('image/png'));
+
+  const duration = await getAudioDuration(audioPath);
+
+  // Generate scroll expression
+  const totalComplexity = sections.reduce((sum, s) => sum + s.complexity, 0);
+  const initialDelay = 6;
+  const subheadingDelay = 2;
+  const speedFactor = 0.7;
+
+  const generateScrollExpression = () => {
+    let expression = `if(lt(t,${initialDelay}),${paddingY},`;
+    let timeOffset = initialDelay;
+    sections.forEach((section, index) => {
+      const adjComplexity = section.complexity * 1.2;
+      const sectionDuration = (adjComplexity / totalComplexity) * (duration - initialDelay);
+      const sectionStart = section.startLine * lineHeight + paddingY;
+      const sectionEnd = (section.endLine + 1) * lineHeight + paddingY;
+      const sectionHeight = sectionEnd - sectionStart;
+      const isSubheading = wrappedLines[section.startLine]?.trim().length < 60;
+      const scrollFormula = `${sectionStart}+((t-${timeOffset})/${sectionDuration / speedFactor})*${sectionHeight}`;
+      if (index === sections.length - 1) {
+        expression += `if(lt(t,${duration}),${isSubheading ? `if(lt(t,${timeOffset + subheadingDelay}),${sectionStart},${scrollFormula})` : scrollFormula},${totalHeight - height})`;
+      } else {
+        expression += `if(lt(t,${timeOffset + sectionDuration}),${isSubheading ? `if(lt(t,${timeOffset + subheadingDelay}),${sectionStart},${scrollFormula}),` : scrollFormula + ','})`;
       }
+      timeOffset += sectionDuration;
     });
+    expression += ')'.repeat(sections.length);
+    return expression;
+  };
 
-    const lineHeight = fontSize * lineSpacing;
-    const totalHeight =
-      wrappedLines.length * lineHeight + paddingY * 2 + height;
+  const tempVideoPath = outputPath.replace(/\.mp4$/, '_video.mp4');
 
-    // ========== 2. DRAW CANVAS ==========
-    const canvas = createCanvas(width, totalHeight);
-    const scrollCtx = canvas.getContext("2d");
+  // Create scroll video
+  await new Promise<void>((resolve, reject) => {
+    ffmpeg()
+      .input(tallImagePath)
+      .inputOptions(['-framerate 30', '-loop 1'])
+      .videoFilters([{ filter: 'crop', options: { w: width, h: height, x: '0', y: generateScrollExpression() } }])
+      .outputOptions(['-c:v libx264', '-pix_fmt yuv420p', '-preset ultrafast', '-r 30', `-t ${duration + 0.1}`, '-y'])
+      .save(tempVideoPath)
+      .on("end", () => resolve())
+      .on('error', reject);
+  });
 
-    scrollCtx.fillStyle = bgColor;
-    scrollCtx.fillRect(0, 0, width, totalHeight);
+  // Merge with audio
+  await new Promise<void>((resolve, reject) => {
+    ffmpeg()
+      .input(tempVideoPath)
+      .input(audioPath)
+      .complexFilter([{ filter: 'adelay', options: ['50'], inputs: '1:a', outputs: 'adelayed' }])
+      .outputOptions([
+        '-map 0:v:0',
+        '-map [adelayed]',
+        '-c:v copy',
+        '-c:a aac',
+        '-b:a 192k',
+        '-shortest',
+        '-vsync cfr',
+        '-movflags +faststart',
+        '-y'
+      ])
+      .save(outputPath)
+      .on("end", () => resolve())
+      .on('error', reject);
+  });
 
-    scrollCtx.font = `${fontSize}px ${fontFamily}`;
-    scrollCtx.fillStyle = textColor;
-    scrollCtx.textBaseline = "top";
-
-    wrappedLines.forEach((line, i) => {
-      if (line.trim() !== "") {
-        scrollCtx.fillText(line, paddingX, paddingY + i * lineHeight);
-      }
-    });
-
-    // ========== 3. IMAGE AS BUFFER (NO DISK) ==========
-    const imageBuffer = await new Promise<Buffer>((resolve, reject) => {
-      const chunks: Buffer[] = [];
-      const stream = canvas.createPNGStream();
-
-      stream.on("data", (chunk) => chunks.push(chunk));
-      stream.on("end", () => resolve(Buffer.concat(chunks)));
-      stream.on("error", reject);
-    });
-
-    // Save image to database
-    await saveScrollImage(jobId, imageBuffer);
-
-    // ========== 4. CREATE TEMP FILES (Render-safe) ==========
-    const tmpImage = `/tmp/${jobId}-scroll.png`;
-    const tmpAudio = `/tmp/${jobId}-audio.wav`;
-    const tmpVideo = `/tmp/${jobId}-video.mp4`;
-    const tmpFinal = `/tmp/${jobId}-final.mp4`;
-
-    fs.writeFileSync(tmpImage, imageBuffer);
-    fs.writeFileSync(tmpAudio, audioBuffer);
-
-    const duration = await getAudioDuration(tmpAudio);
-
-    // Build scroll expression
-    const totalComplexity = sections.reduce(
-      (s, sec) => s + sec.complexity,
-      0
-    );
-
-    const initialDelay = 6;
-    const speedFactor = 0.7;
-    const availableDuration = duration - initialDelay;
-
-    const generateScrollExpression = () => {
-      let expr = `if(lt(t,${initialDelay}),${paddingY},`;
-      let t = initialDelay;
-
-      sections.forEach((sec) => {
-        const secDur =
-          (sec.complexity / totalComplexity) * availableDuration;
-        const start = sec.startLine * lineHeight + paddingY;
-        const end = (sec.endLine + 1) * lineHeight + paddingY;
-        const height = end - start;
-        const formula = `${start}+((t-${t})/${secDur / speedFactor})*${height}`;
-
-        expr += `if(lt(t,${t + secDur}),${formula},`;
-        t += secDur;
-      });
-
-      expr += `${totalHeight - height}` + ")".repeat(sections.length);
-      return expr;
-    };
-
-    // ========== 5. CREATE SCROLL VIDEO ==========
-    await new Promise<void>((resolve, reject) => {
-      ffmpeg()
-        .input(tmpImage)
-        .inputOptions(["-framerate 30", "-loop 1"])
-        .videoFilters([
-          {
-            filter: "crop",
-            options: {
-              w: width,
-              h: height,
-              x: 0,
-              y: generateScrollExpression(),
-            },
-          },
-        ])
-        .outputOptions([
-          "-c:v libx264",
-          "-pix_fmt yuv420p",
-          "-preset ultrafast",
-          "-r 30",
-          `-t ${duration}`,
-          "-y",
-        ])
-        .save(tmpVideo)
-        .on("end", () => resolve())
-        .on("error", (err) => reject(err));
-    });
-
-    // ========== 6. MERGE AUDIO ==========
-    await new Promise<void>((resolve, reject) => {
-      ffmpeg()
-        .input(tmpVideo)
-        .input(tmpAudio)
-        .outputOptions([
-          "-c:v copy",
-          "-c:a aac",
-          "-b:a 192k",
-          "-shortest",
-          "-movflags +faststart",
-          "-y",
-        ])
-        .save(tmpFinal)
-        .on("end", () => resolve())
-        .on("error", (err) => reject(err));
-    });
-
-    // ========== 7. RETURN FINAL VIDEO BUFFER ==========
-    const finalVideoBuffer = fs.readFileSync(tmpFinal);
-    await saveScrollVideo(jobId, finalVideoBuffer);
-
-    // Cleanup
-    fs.rmSync(tmpImage, { force: true });
-    fs.rmSync(tmpAudio, { force: true });
-    fs.rmSync(tmpVideo, { force: true });
-    fs.rmSync(tmpFinal, { force: true });
-
-    return finalVideoBuffer;
-  } catch (err) {
-    console.error("❌ Error in generateScrollingScriptVideo:", err);
-    throw err;
-  }
+  // Cleanup temp files
+  fs.unlinkSync(tallImagePath);
+  fs.unlinkSync(tempVideoPath);
+  console.log(`✅ Scrolling video created at ${outputPath}`);
 }
+
+/**
+ * Convenience function: generate video from buffer (serverless/Heroku)
+ */
+export async function generateScrollingScriptVideoBuffer(script: string, audioBuffer: Buffer): Promise<Buffer> {
+  const tempDir = os.tmpdir();
+  const tempId = `scroll-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const audioPath = path.join(tempDir, `${tempId}.mp3`);
+  const videoPath = path.join(tempDir, `${tempId}.mp4`);
+
+  fs.writeFileSync(audioPath, audioBuffer);
+  await generateScrollingScriptVideo(script, audioPath, videoPath);
+
+  const videoBuffer = fs.readFileSync(videoPath);
+  [audioPath, videoPath].forEach(f => fs.existsSync(f) && fs.unlinkSync(f));
+  return videoBuffer;
+}
+
