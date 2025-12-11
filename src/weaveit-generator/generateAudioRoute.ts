@@ -6,6 +6,14 @@ import { createVideoJob, updateJobStatus, storeAudio, deductUserPoints } from '.
 
 const router = express.Router();
 
+// Helper function to estimate audio duration from MP3 buffer (in seconds)
+function estimateAudioDuration(buffer: Buffer): number {
+  // MP3 bitrate estimation: use average bitrate of 128kbps
+  const estimatedBitrate = 128000; // bits per second
+  const durationSeconds = (buffer.length * 8) / estimatedBitrate;
+  return Math.round(durationSeconds);
+}
+
 // POST /api/generate/audio
 const generateAudioHandler = async (req: Request, res: Response): Promise<void> => {
   let jobId: string | null = null;
@@ -52,8 +60,12 @@ const generateAudioHandler = async (req: Request, res: Response): Promise<void> 
     const audioBuffer = await generateSpeechBuffer(explanation);
     console.log(`Generated audio: ${audioBuffer.length} bytes`);
 
+    // Calculate duration from audio buffer (in seconds)
+    const durationSec = estimateAudioDuration(audioBuffer);
+    console.log(`Estimated duration: ${durationSec} seconds`);
+
     // Store audio in database
-    const audioId = await storeAudio(jobId, walletAddress, audioBuffer);
+    const audioId = await storeAudio(jobId, walletAddress, audioBuffer, durationSec);
     console.log('Stored audio in database:', audioId);
 
     // Update job status to completed

@@ -332,6 +332,20 @@ export async function getTotalUsersCount(): Promise<number> {
   return result.rows[0]?.count || 0;
 }
 
+// Total number of videos created (all job statuses)
+export async function getTotalVideosCreated(): Promise<number> {
+  const result = await pool.query(`SELECT COUNT(*)::int as count FROM video_jobs`);
+  return result.rows[0]?.count || 0;
+}
+
+// Number of failed jobs
+export async function getTotalFailedJobs(): Promise<number> {
+  const result = await pool.query(
+    `SELECT COUNT(*)::int as count FROM video_jobs WHERE status = 'failed'`
+  );
+  return result.rows[0]?.count || 0;
+}
+
 // Audio retrieval
 export async function getAudioByJobId(jobId: string): Promise<Buffer | null> {
   const result = await pool.query(

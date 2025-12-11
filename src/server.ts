@@ -5,7 +5,7 @@ import path from 'path';
 import videosStatusRoute from './weaveit-generator/videosStatusRoute.js';
 import generateRoute from './weaveit-generator/generateRoute.js';
 import generateAudioRoute from './weaveit-generator/generateAudioRoute.js';
-import { testConnection, getVideoByJobId, getVideoByVideoId, getVideosByWallet, getAudioByJobId, getAudioByAudioId, getContentByWallet, getUserInfo, getCompletedJobsCount, getTotalDurationSecondsForWallet, getTotalUsersCount } from './db.js';
+import { testConnection, getVideoByJobId, getVideoByVideoId, getVideosByWallet, getAudioByJobId, getAudioByAudioId, getContentByWallet, getUserInfo, getCompletedJobsCount, getTotalDurationSecondsForWallet, getTotalUsersCount, getTotalVideosCreated, getTotalFailedJobs } from './db.js';
 import paymentsRoute from './paymentsRoute.js';
 import usersRoute from './usersRoute.js';
 
@@ -129,16 +129,28 @@ app.get('/api/wallet/:walletAddress/content', async (req, res) => {
 app.get('/api/stats', async (req, res) => {
   try {
     // Fetch global stats in parallel
-    const [totalSeconds, totalUsers] = await Promise.all([
+    const [totalSeconds, totalUsers, completedJobsCount, totalVideosCreated, totalFailedJobs] = await Promise.all([
       getTotalDurationSecondsForWallet(''), // Get all durations (empty wallet means global)
-      getTotalUsersCount()
+      getTotalUsersCount(),
+      getCompletedJobsCount(''), // Get all completed jobs (empty wallet means global)
+      getTotalVideosCreated(),
+      getTotalFailedJobs()
     ]);
 
     const totalMinutes = Number((totalSeconds / 60).toFixed(2));
+    const successRate = totalVideosCreated > 0 
+      ? Number(((completedJobsCount / totalVideosCreated) * 100).toFixed(2))
+      : 0;
+
+    console.log('Global stats - total minutes:', totalMinutes, 'total users:', totalUsers, 'completed jobs:', completedJobsCount, 'total videos:', totalVideosCreated, 'failed jobs:', totalFailedJobs);
 
     res.json({
       total_minutes: totalMinutes,
-      total_users: totalUsers
+      total_users: totalUsers,
+      completed_jobs_count: completedJobsCount,
+      total_videos_created: totalVideosCreated,
+      failed_jobs_count: totalFailedJobs,
+      success_rate: successRate
     });
   } catch (err) {
     console.error('Error fetching global stats:', err);
