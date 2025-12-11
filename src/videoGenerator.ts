@@ -1,9 +1,9 @@
 import ffmpeg from 'fluent-ffmpeg';
 import fs from 'fs';
 import path from 'path';
-import os, { userInfo } from 'os';
+// import os, { userInfo } from 'os';
 import { CanvasRenderingContext2D, createCanvas } from 'canvas';
-import { saveScrollImage, saveScrollVideo } from './db';
+import { saveScrollImage, saveScrollVideo } from './db.js';
 
 const ffmpegPath = "/usr/bin/ffmpeg";
 const ffprobePath = "/usr/bin/ffprobe";
