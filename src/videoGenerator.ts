@@ -89,20 +89,17 @@ async function generateSlides(script: string, outputDir: string): Promise<{ slid
     const availableWidth = canvas.width - (2 * paddingX);
     const availableHeight = canvas.height - (2 * paddingY);
 
-    // Start with a reasonable font size
+    // Calculate optimal font size directly (faster than iterating)
     let fontSize = 28;
-    let lineHeight = fontSize * 1.3; // Proper line spacing
+    let lineHeight = fontSize * 1.3;
     let maxLines = Math.floor(availableHeight / lineHeight);
     
-    // Find optimal font size that maximizes text on slide
-    while (fontSize >= 18) {
+    // If not enough space, calculate directly instead of looping
+    if (maxLines < 8) {
+      fontSize = Math.floor((availableHeight / 8) / 1.3);
+      fontSize = Math.max(fontSize, 18);
       lineHeight = fontSize * 1.3;
       maxLines = Math.floor(availableHeight / lineHeight);
-      
-      if (maxLines >= 8) { // Ensure we have enough lines to fill the slide
-        break;
-      }
-      fontSize -= 1;
     }
 
     ctx.font = `${fontSize}px Arial, sans-serif`;
@@ -190,15 +187,15 @@ function createSlideVideo(slidePath: string, outputPath: string, duration: numbe
     ffmpeg(slidePath)
       .inputOptions([
         '-loop 1',
-        '-framerate 30' // Use standard framerate for input
+        '-framerate 15' // Reduce input framerate for faster processing
       ])
       .outputOptions([
         '-c:v libx264',
         `-t ${duration.toFixed(3)}`, // Use precise duration
         '-pix_fmt yuv420p',
-        '-r 30', // Output framerate
-        '-preset medium', // Better quality
-        '-crf 18', // Higher quality
+        '-r 15', // Reduce output framerate
+        '-preset fast', // Faster encoding
+        '-crf 23', // Balanced quality/speed
         '-movflags +faststart'
       ])
       .output(outputPath)
@@ -235,9 +232,9 @@ function concatSlideVideos(videoPaths: string[], outputPath: string): Promise<vo
         '-c:v libx264', // Re-encode for consistency
         '-c:a copy', // Copy audio if any
         '-pix_fmt yuv420p',
-        '-r 30',
-        '-preset medium',
-        '-crf 18',
+        '-r 15', // Reduce framerate
+        '-preset fast', // Faster encoding
+        '-crf 23', // Balanced quality/speed
         '-movflags +faststart',
         '-avoid_negative_ts make_zero'
       ])
@@ -289,7 +286,7 @@ function mergeWithAudio(videoPath: string, audioPath: string, outputPath: string
         .outputOptions([
           '-c:v copy', // Copy video stream
           '-c:a aac',
-          '-b:a 192k',
+          '-b:a 128k', // Reduce audio bitrate
           '-shortest', // Use shortest input (should be audio)
           '-avoid_negative_ts make_zero',
           '-movflags +faststart',
@@ -559,9 +556,9 @@ export async function generateScrollingScriptVideo(script: string, audioPath: st
   await new Promise<void>((resolve, reject) => {
     ffmpeg()
       .input(tallImagePath)
-      .inputOptions(['-framerate 30', '-loop 1'])
+      .inputOptions(['-framerate 15', '-loop 1'])
       .videoFilters([{ filter: 'crop', options: { w: width, h: height, x: '0', y: generateScrollExpression() } }])
-      .outputOptions(['-c:v libx264', '-pix_fmt yuv420p', '-preset ultrafast', '-r 30', `-t ${duration + 0.1}`, '-y'])
+      .outputOptions(['-c:v libx264', '-pix_fmt yuv420p', '-preset ultrafast', '-r 15', `-t ${duration + 0.1}`, '-crf 24', '-y'])
       .save(tempVideoPath)
       .on("end", () => resolve())
       .on('error', reject);
@@ -578,7 +575,7 @@ export async function generateScrollingScriptVideo(script: string, audioPath: st
         '-map [adelayed]',
         '-c:v copy',
         '-c:a aac',
-        '-b:a 192k',
+        '-b:a 128k', // Reduce audio bitrate
         '-shortest',
         '-vsync cfr',
         '-movflags +faststart',
