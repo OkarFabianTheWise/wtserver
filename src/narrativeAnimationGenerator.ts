@@ -105,25 +105,41 @@ function drawArrow(
   toX: number,
   toY: number,
   color: string = '#0066cc',
-  width: number = 3
+  width: number = 3,
+  progress?: number // 0..1 optional moving head progress
 ) {
-  const headlen = 20;
+  const headlen = 18;
   const angle = Math.atan2(toY - fromY, toX - fromX);
 
-  // Draw line
+  // Draw base (faint) full connection for context
+  ctx.save();
   ctx.strokeStyle = color;
+  ctx.globalAlpha = 0.25;
   ctx.lineWidth = width;
   ctx.beginPath();
   ctx.moveTo(fromX, fromY);
   ctx.lineTo(toX, toY);
   ctx.stroke();
+  ctx.restore();
 
-  // Draw arrowhead
+  // If progress provided, draw moving segment and head
+  const endX = typeof progress === 'number' ? fromX + (toX - fromX) * Math.min(Math.max(progress, 0), 1) : toX;
+  const endY = typeof progress === 'number' ? fromY + (toY - fromY) * Math.min(Math.max(progress, 0), 1) : toY;
+
+  // Draw moving line
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.moveTo(fromX, fromY);
+  ctx.lineTo(endX, endY);
+  ctx.stroke();
+
+  // Draw arrowhead at end
   ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.moveTo(toX, toY);
-  ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 6), toY - headlen * Math.sin(angle - Math.PI / 6));
-  ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 6), toY - headlen * Math.sin(angle + Math.PI / 6));
+  ctx.moveTo(endX, endY);
+  ctx.lineTo(endX - headlen * Math.cos(angle - Math.PI / 6), endY - headlen * Math.sin(angle - Math.PI / 6));
+  ctx.lineTo(endX - headlen * Math.cos(angle + Math.PI / 6), endY - headlen * Math.sin(angle + Math.PI / 6));
   ctx.closePath();
   ctx.fill();
 }
@@ -161,7 +177,8 @@ function renderSceneContent(
   ctx: CanvasRenderingContext2D,
   scene: NarrativeScene,
   canvasWidth: number,
-  canvasHeight: number
+  canvasHeight: number,
+  frameProgress: number = 1 // 0..1 within scene for simple animation
 ) {
   const elements = scene.visualElements || [];
 
@@ -174,47 +191,68 @@ function renderSceneContent(
   ctx.lineWidth = 1;
   ctx.strokeRect(0, 0, canvasWidth, canvasHeight);
 
-  // Default positions for common elements
-  const spacing = canvasWidth / (elements.length + 1);
-  let elementCount = 0;
+  // Pre-define common anchor positions to avoid off-canvas placement
+  const leftX = Math.round(canvasWidth * 0.18);
+  const centerX = Math.round(canvasWidth * 0.5);
+  const rightX = Math.round(canvasWidth * 0.82);
+  const centerY = Math.round(canvasHeight * 0.45);
+
+  // Keep track if we drew primary actors to draw connecting arrows
+  let drewLeft = false;
+  let drewRight = false;
 
   elements.forEach((element) => {
     const element_lower = element.toLowerCase();
-    elementCount++;
-    const xPos = spacing * elementCount;
-    const centerY = canvasHeight / 2;
+
+    // small vertical bobbing for life-like motion
+    const bob = Math.sin(frameProgress * Math.PI * 2) * 6;
 
     if (element_lower.includes('alice') || element_lower.includes('person') || element_lower.includes('user')) {
-      drawStickFigure(ctx, xPos - 100, centerY, '#0066cc');
+      drawStickFigure(ctx, leftX, centerY + bob, '#0066cc');
+      drewLeft = true;
     }
     if (element_lower.includes('bob') || element_lower.includes('receiver')) {
-      drawStickFigure(ctx, xPos + 100, centerY, '#ff6600');
+      drawStickFigure(ctx, rightX, centerY + bob, '#ff6600');
+      drewRight = true;
     }
     if (element_lower.includes('ledger') || element_lower.includes('book') || element_lower.includes('record')) {
-      drawRectangle(ctx, xPos - 60, centerY - 30, 120, 80, '#8B4513', 'Ledger', 14);
+      drawRectangle(ctx, centerX - 60, centerY - 40, 120, 80, '#8B4513', 'Ledger', 14);
     }
     if (element_lower.includes('coin') || element_lower.includes('money') || element_lower.includes('fund')) {
-      drawCoin(ctx, xPos, centerY + 80, 25, '#FFD700');
+      // coin gently floats up/down
+      const coinY = centerY + 80 + Math.cos(frameProgress * Math.PI * 2) * 8;
+      drawCoin(ctx, centerX + 160, coinY, 25, '#FFD700');
     }
     if (element_lower.includes('arrow') || element_lower.includes('connection') || element_lower.includes('flow')) {
-      if (elementCount > 1) {
-        drawArrow(ctx, xPos - spacing + 50, centerY, xPos - 50, centerY, '#0066cc', 2);
-      }
+      // draw animated arrow from left to right (if both present) or from left to center
+      const fromX = drewLeft ? leftX + 40 : centerX - 160;
+      const toX = drewRight ? rightX - 40 : centerX + 40;
+      const fromY = centerY;
+      const toY = centerY;
+      drawArrow(ctx, fromX, fromY, toX, toY, '#0066cc', 3, frameProgress);
     }
   });
 
-  // Add scene narration text at the bottom
-  ctx.fillStyle = '#333';
+  // Add subtle drop shadow line under characters for depth
+  ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, centerY + 140);
+  ctx.lineTo(canvasWidth, centerY + 140);
+  ctx.stroke();
+
+  // Add scene narration text at the bottom with background for readability
+  ctx.fillStyle = '#222';
   ctx.font = 'bold 18px Arial, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
-  
+
   // Word wrap the narration
-  const maxWidth = canvasWidth - 80;
-  const words = scene.narration.split(' ');
+  const maxWidth = canvasWidth - 120;
+  const words = (scene.narration || '').split(' ');
   let line = '';
   const lines: string[] = [];
-  
+
   words.forEach((word) => {
     const testLine = line + (line ? ' ' : '') + word;
     const metrics = ctx.measureText(testLine);
@@ -227,11 +265,20 @@ function renderSceneContent(
   });
   if (line) lines.push(line);
 
-  let textY = canvasHeight - 40;
-  lines.forEach((l) => {
-    ctx.fillText(l, canvasWidth / 2, textY);
-    textY -= 25;
-  });
+  // Draw translucent background box behind subtitles
+  const lineHeight = 24;
+  const boxHeight = lines.length * lineHeight + 20;
+  const boxY = canvasHeight - boxHeight - 10;
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  const boxX = 40;
+  ctx.fillRect(boxX, boxY, canvasWidth - boxX * 2, boxHeight);
+
+  ctx.fillStyle = '#fff';
+  let textY = canvasHeight - 20;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    ctx.fillText(lines[i], canvasWidth / 2, textY);
+    textY -= lineHeight;
+  }
 
   // Add scene number in top-left
   ctx.fillStyle = '#999';
@@ -264,7 +311,9 @@ async function generateSceneFrames(
       ctx.globalAlpha = 1;
     }
 
-    renderSceneContent(ctx, scene, canvasWidth, canvasHeight);
+    // Pass normalized progress to renderer for simple motion
+    const progress = numFrames > 0 ? f / Math.max(1, numFrames - 1) : 0;
+    renderSceneContent(ctx, scene, canvasWidth, canvasHeight, progress);
 
     const frameIndex = startFrameIndex + f;
     const framePath = path.join(outputDir, `frame_${frameIndex.toString().padStart(6, '0')}.png`);

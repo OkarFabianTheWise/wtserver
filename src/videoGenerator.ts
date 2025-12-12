@@ -192,6 +192,7 @@ function createSlideVideo(slidePath: string, outputPath: string, duration: numbe
       .outputOptions([
         '-c:v libx264',
         `-t ${duration.toFixed(3)}`, // Use precise duration
+        '-threads 0', // allow ffmpeg to auto-manage threads for faster encode
         '-pix_fmt yuv420p',
         '-r 15', // Reduce output framerate
         '-preset fast', // Faster encoding
@@ -383,12 +384,36 @@ export async function generateVideo(tutorialText: string, audioPath: string, fin
     });
 
     // Create video clips for each slide with buffered durations
-    const videoClips: string[] = [];
-    for (let i = 0; i < slides.length; i++) {
-      const videoClipPath = path.join(tempClipsDir, `clip_${i}.mp4`);
-      await createSlideVideo(slides[i], videoClipPath, finalSlideDurations[i]);
-      videoClips.push(videoClipPath);
-    }
+    const concurrency = Math.max(2, Math.min(8, os.cpus().length || 2));
+    const videoClips: string[] = new Array(slides.length);
+    let currentIndex = 0;
+    await new Promise<void>((resolve, reject) => {
+      let active = 0;
+      let errored = false;
+      function next() {
+        if (errored) return;
+        if (currentIndex >= slides.length && active === 0) {
+          resolve();
+          return;
+        }
+        while (active < concurrency && currentIndex < slides.length) {
+          const i = currentIndex++;
+          active++;
+          const videoClipPath = path.join(tempClipsDir, `clip_${i}.mp4`);
+          createSlideVideo(slides[i], videoClipPath, finalSlideDurations[i])
+            .then(() => {
+              videoClips[i] = videoClipPath;
+              active--;
+              next();
+            })
+            .catch(err => {
+              errored = true;
+              reject(err);
+            });
+        }
+      }
+      next();
+    });
 
     // Concatenate all video clips
     const concatVideoPath = path.join(outputDir, 'combined.mp4');
