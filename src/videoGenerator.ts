@@ -177,9 +177,6 @@ async function generateSlides(script: string, outputDir: string): Promise<{ slid
   return { slides: slidePaths, weights: allWeights };
 }
 
-/**
- * Turn each slide into a short video clip - FIXED VERSION
- */
 function createSlideVideo(slidePath: string, outputPath: string, duration: number): Promise<void> {
   return new Promise((resolve, reject) => {
     console.log(`🎬 Creating video clip: ${path.basename(outputPath)} (${duration.toFixed(3)}s)`);
@@ -187,16 +184,16 @@ function createSlideVideo(slidePath: string, outputPath: string, duration: numbe
     ffmpeg(slidePath)
       .inputOptions([
         '-loop 1',
-        '-framerate 15' // Reduce input framerate for faster processing
+        '-framerate 10' // Reduced for faster processing
       ])
       .outputOptions([
         '-c:v libx264',
         `-t ${duration.toFixed(3)}`, // Use precise duration
         '-threads 0', // allow ffmpeg to auto-manage threads for faster encode
         '-pix_fmt yuv420p',
-        '-r 15', // Reduce output framerate
-        '-preset fast', // Faster encoding
-        '-crf 23', // Balanced quality/speed
+        '-r 10', // Reduced output framerate
+        '-preset ultrafast', // Faster encoding
+        '-crf 28', // Lower quality for speed
         '-movflags +faststart'
       ])
       .output(outputPath)
@@ -233,9 +230,9 @@ function concatSlideVideos(videoPaths: string[], outputPath: string): Promise<vo
         '-c:v libx264', // Re-encode for consistency
         '-c:a copy', // Copy audio if any
         '-pix_fmt yuv420p',
-        '-r 15', // Reduce framerate
-        '-preset fast', // Faster encoding
-        '-crf 23', // Balanced quality/speed
+        '-r 10', // Reduced framerate
+        '-preset ultrafast', // Faster encoding
+        '-crf 28', // Lower quality for speed
         '-movflags +faststart',
         '-avoid_negative_ts make_zero'
       ])
@@ -384,7 +381,7 @@ export async function generateVideo(tutorialText: string, audioPath: string, fin
     });
 
     // Create video clips for each slide with buffered durations
-    const concurrency = Math.max(2, Math.min(8, os.cpus().length || 2));
+    const concurrency = Math.max(2, Math.min(16, os.cpus().length || 2));
     const videoClips: string[] = new Array(slides.length);
     let currentIndex = 0;
     await new Promise<void>((resolve, reject) => {
