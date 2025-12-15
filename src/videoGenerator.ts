@@ -527,6 +527,8 @@ export async function generateScrollingScriptVideo(script: string, audioPath: st
   const lineHeight = fontSize * lineSpacing;
   const totalHeight = wrappedLines.length * lineHeight + 2 * paddingY + height;
 
+  console.log(`📝 Processed ${paragraphs.length} paragraphs, ${sections.length} sections, ${wrappedLines.length} lines, total height: ${totalHeight}px`);
+
   // Create tall canvas
   const canvas = createCanvas(width, totalHeight);
   const scrollCtx = canvas.getContext('2d');
@@ -541,72 +543,84 @@ export async function generateScrollingScriptVideo(script: string, audioPath: st
 
   const tallImagePath = outputPath.replace(/\.mp4$/, '_scroll.png');
   fs.writeFileSync(tallImagePath, canvas.toBuffer('image/png'));
+  
+  // Validate tall image
+  const imageStats = fs.statSync(tallImagePath);
+  console.log(`🖼️  Tall image created: ${imageStats.size} bytes, ${width}x${totalHeight}px`);
+  if (imageStats.size < 10000) { // Less than 10KB is probably corrupted
+    throw new Error(`Tall image too small: ${imageStats.size} bytes`);
+  }
 
   const duration = await getAudioDuration(audioPath);
+  console.log(`🎵 Audio duration for scrolling: ${duration.toFixed(3)}s`);
 
-  // Generate scroll expression
-  const totalComplexity = sections.reduce((sum, s) => sum + s.complexity, 0);
-  const initialDelay = 6;
-  const subheadingDelay = 2;
-  const speedFactor = 0.7;
-
-  const generateScrollExpression = () => {
-    let expression = `if(lt(t,${initialDelay}),${paddingY},`;
-    let timeOffset = initialDelay;
-    sections.forEach((section, index) => {
-      const adjComplexity = section.complexity * 1.2;
-      const sectionDuration = (adjComplexity / totalComplexity) * (duration - initialDelay);
-      const sectionStart = section.startLine * lineHeight + paddingY;
-      const sectionEnd = (section.endLine + 1) * lineHeight + paddingY;
-      const sectionHeight = sectionEnd - sectionStart;
-      const isSubheading = wrappedLines[section.startLine]?.trim().length < 60;
-      const scrollFormula = `${sectionStart}+((t-${timeOffset})/${sectionDuration / speedFactor})*${sectionHeight}`;
-      if (index === sections.length - 1) {
-        expression += `if(lt(t,${duration}),${isSubheading ? `if(lt(t,${timeOffset + subheadingDelay}),${sectionStart},${scrollFormula})` : scrollFormula},${totalHeight - height})`;
-      } else {
-        expression += `if(lt(t,${timeOffset + sectionDuration}),${isSubheading ? `if(lt(t,${timeOffset + subheadingDelay}),${sectionStart},${scrollFormula}),` : scrollFormula + ','})`;
-      }
-      timeOffset += sectionDuration;
-    });
-    expression += ')'.repeat(sections.length);
-    return expression;
-  };
-
+  // Create scrolling video from tall image
   const tempVideoPath = outputPath.replace(/\.mp4$/, '_video.mp4');
 
-  // Create scroll video
+  // Simple scrolling expression (linear)
+  const scrollExpression = `${paddingY}+(t/${duration})*(${totalHeight - height - paddingY})`;
+  console.log(`📜 Scroll expression: ${scrollExpression}`);
+
   await new Promise<void>((resolve, reject) => {
-    ffmpeg()
-      .input(tallImagePath)
+    ffmpeg(tallImagePath)
       .inputOptions(['-framerate 15', '-loop 1'])
-      .videoFilters([{ filter: 'crop', options: { w: width, h: height, x: '0', y: generateScrollExpression() } }])
+      .videoFilters([{ filter: 'crop', options: { w: width, h: height, x: '0', y: scrollExpression } }])
       .outputOptions(['-c:v libx264', '-pix_fmt yuv420p', '-preset ultrafast', '-r 15', `-t ${duration + 0.1}`, '-crf 24', '-y'])
       .save(tempVideoPath)
-      .on("end", () => resolve())
-      .on('error', reject);
+      .on("end", () => {
+        console.log(`✅ Temp scroll video created: ${tempVideoPath}`);
+        resolve();
+      })
+      .on('error', (err) => {
+        console.error('❌ Error creating scroll video:', err);
+        reject(err);
+      });
   });
 
-  // Merge with audio
+  // Validate temp video (don't throw on failure, just warn)
+  try {
+    const tempVideoDuration = await getVideoDuration(tempVideoPath);
+    console.log(`📹 Temp video duration: ${tempVideoDuration.toFixed(3)}s (expected: ${duration.toFixed(3)}s)`);
+  } catch (err) {
+    console.error('❌ Temp video validation failed:', err);
+  }
+
+  // Merge with audio (simplified)
   await new Promise<void>((resolve, reject) => {
     ffmpeg()
       .input(tempVideoPath)
       .input(audioPath)
-      .complexFilter([{ filter: 'adelay', options: ['50'], inputs: '1:a', outputs: 'adelayed' }])
       .outputOptions([
-        '-map 0:v:0',
-        '-map [adelayed]',
-        '-c:v copy',
-        '-c:a aac',
-        '-b:a 128k', // Reduce audio bitrate
-        '-shortest',
-        '-vsync cfr',
-        '-movflags +faststart',
-        '-y'
+        '-c:v copy', // Copy video stream
+        '-c:a aac',  // Encode audio as AAC
+        '-b:a 128k',
+        '-shortest', // Use shortest input duration
+        '-vsync cfr', // Constant frame rate
+        '-movflags +faststart', // Put moov atom at beginning
+        '-y' // Overwrite output
       ])
       .save(outputPath)
-      .on("end", () => resolve())
-      .on('error', reject);
+      .on("end", () => {
+        console.log(`✅ Final video merged with audio: ${outputPath}`);
+        resolve();
+      })
+      .on('error', (err) => {
+        console.error('❌ Error merging audio:', err);
+        reject(err);
+      });
   });
+
+  // Validate final video
+  try {
+    const finalVideoDuration = await getVideoDuration(outputPath);
+    console.log(`📹 Final video duration: ${finalVideoDuration.toFixed(3)}s`);
+    if (finalVideoDuration < duration * 0.5) {
+      throw new Error(`Final video too short: ${finalVideoDuration}s vs expected ${duration}s`);
+    }
+  } catch (err) {
+    console.error('❌ Final video validation failed:', err);
+    throw err;
+  }
 
   // Cleanup temp files
   fs.unlinkSync(tallImagePath);
@@ -614,20 +628,52 @@ export async function generateScrollingScriptVideo(script: string, audioPath: st
   console.log(`✅ Scrolling video created at ${outputPath}`);
 }
 
-/**
- * Convenience function: generate video from buffer (serverless/Heroku)
- */
 export async function generateScrollingScriptVideoBuffer(script: string, audioBuffer: Buffer): Promise<Buffer> {
   const tempDir = os.tmpdir();
   const tempId = `scroll-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const audioPath = path.join(tempDir, `${tempId}.mp3`);
   const videoPath = path.join(tempDir, `${tempId}.mp4`);
 
-  fs.writeFileSync(audioPath, audioBuffer);
-  await generateScrollingScriptVideo(script, audioPath, videoPath);
+  try {
+    fs.writeFileSync(audioPath, audioBuffer);
+    await generateScrollingScriptVideo(script, audioPath, videoPath);
 
-  const videoBuffer = fs.readFileSync(videoPath);
-  [audioPath, videoPath].forEach(f => fs.existsSync(f) && fs.unlinkSync(f));
-  return videoBuffer;
+    // Validate the generated video file
+    if (!fs.existsSync(videoPath)) {
+      throw new Error('Video file was not created');
+    }
+
+    const stats = fs.statSync(videoPath);
+    if (stats.size < 1000) { // Less than 1KB is probably corrupted
+      throw new Error(`Video file too small: ${stats.size} bytes`);
+    }
+
+    const videoBuffer = fs.readFileSync(videoPath);
+    console.log(`📦 Video buffer created: ${videoBuffer.length} bytes`);
+    console.log(`📦 First 20 bytes: ${videoBuffer.slice(0, 20).toString('hex')}`);
+    console.log(`📦 Is MP4 header: ${videoBuffer.slice(4, 8).toString() === 'ftyp'}`);
+    
+    if (videoBuffer.length < 1000) {
+      throw new Error(`Video buffer too small: ${videoBuffer.length} bytes`);
+    }
+    
+    if (videoBuffer.slice(4, 8).toString() !== 'ftyp') {
+      console.error('❌ Video buffer does not have MP4 header!');
+      console.error('Full header:', videoBuffer.slice(0, 20).toString('hex'));
+    }
+    
+    return videoBuffer;
+  } finally {
+    // Cleanup temp files
+    [audioPath, videoPath].forEach(f => {
+      if (fs.existsSync(f)) {
+        try {
+          fs.unlinkSync(f);
+        } catch (err) {
+          console.error(`Error cleaning up ${f}:`, err);
+        }
+      }
+    });
+  }
 }
 

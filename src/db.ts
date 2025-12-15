@@ -200,6 +200,10 @@ export async function storeVideo(
   format: string = 'mp4',
   audioData?: Buffer
 ): Promise<string> {
+  console.log(`💾 Storing video for job ${jobId}: ${videoData.length} bytes`);
+  console.log(`💾 Video first 20 bytes: ${videoData.slice(0, 20).toString('hex')}`);
+  console.log(`💾 Video is MP4: ${videoData.slice(4, 8).toString() === 'ftyp'}`);
+  
   const result = await pool.query(
     `INSERT INTO videos (job_id, wallet_address, video_data, duration_sec, format, audio_data) 
      VALUES ($1, $2, $3, $4, $5, $6) 
@@ -255,7 +259,15 @@ export async function getVideoByVideoId(videoId: string): Promise<Buffer | null>
     'SELECT video_data FROM videos WHERE video_id = $1',
     [videoId]
   );
-  return result.rows[0]?.video_data || null;
+  const buffer = result.rows[0]?.video_data || null;
+  if (buffer) {
+    console.log(`🗄️ Retrieved video ${videoId} from DB: ${buffer.length} bytes`);
+    console.log(`🗄️ DB buffer first 20 bytes: ${buffer.slice(0, 20).toString('hex')}`);
+    console.log(`🗄️ DB buffer is MP4: ${buffer.slice(4, 8).toString() === 'ftyp'}`);
+  } else {
+    console.log(`🗄️ Video ${videoId} not found in DB`);
+  }
+  return buffer;
 }
 
 export async function getVideosByWallet(walletAddress: string): Promise<Array<{

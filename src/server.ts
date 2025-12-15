@@ -2,11 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import crypto from 'crypto';
 import videosStatusRoute from './weaveit-generator/videosStatusRoute.js';
 import generateRoute from './weaveit-generator/generateRoute.js';
 import generateAudioRoute from './weaveit-generator/generateAudioRoute.js';
 import generateNarrativeRoute from './weaveit-generator/generateNarrativeRoute.js';
-import { testConnection, getVideoByJobId, getVideoByVideoId, getVideosByWallet, getAudioByJobId, getAudioByAudioId, getContentByWallet, getUserInfo, getCompletedJobsCount, getTotalDurationSecondsForWallet, getTotalUsersCount, getTotalVideosCreated, getTotalFailedJobs } from './db.js';
+import pool, { testConnection, getVideoByJobId, getVideoByVideoId, getVideosByWallet, getAudioByJobId, getAudioByAudioId, getContentByWallet, getUserInfo, getCompletedJobsCount, getTotalDurationSecondsForWallet, getTotalUsersCount, getTotalVideosCreated, getTotalFailedJobs, updateJobStatus, storeVideo } from './db.js';
 import paymentsRoute from './paymentsRoute.js';
 import usersRoute from './usersRoute.js';
 
@@ -43,6 +44,8 @@ app.get('/api/videos/job/:jobId', async (req, res) => {
     res.setHeader('Content-Type', 'video/mp4');
     res.setHeader('Content-Length', videoBuffer.length);
     res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+    res.setHeader('Content-Disposition', 'inline'); // Play inline, don't download
     res.send(videoBuffer);
   } catch (err) {
     console.error('Error serving video:', err);
@@ -62,10 +65,16 @@ app.get('/api/videos/:videoId', async (req, res) => {
       return;
     }
 
+    console.log(`🎬 Serving video ${videoId}: ${videoBuffer.length} bytes`);
+    console.log(`🎬 First 20 bytes: ${videoBuffer.slice(0, 20).toString('hex')}`);
+    console.log(`🎬 Is MP4 header: ${videoBuffer.slice(4, 8).toString() === 'ftyp'}`);
+
     // Set proper headers for video streaming
     res.setHeader('Content-Type', 'video/mp4');
     res.setHeader('Content-Length', videoBuffer.length);
     res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+    res.setHeader('Content-Disposition', 'inline'); // Play inline, don't download
     res.send(videoBuffer);
   } catch (err) {
     console.error('Error serving video:', err);
@@ -208,7 +217,184 @@ app.get('/api/audio/:audioId', async (req, res) => {
   }
 });
 
-// DB health endpoint
+// Webhook endpoint for job updates (completion and progress)
+app.post('/api/webhooks/job-update', async (req, res) => {
+  try {
+    const signature = req.headers['x-signature'] as string;
+    const body = JSON.stringify(req.body);
+
+    if (!signature) {
+      res.status(400).json({ error: 'Missing signature' });
+      return;
+    }
+
+    const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || 'default-webhook-secret';
+    const expectedSignature = crypto
+      .createHmac('sha256', WEBHOOK_SECRET)
+      .update(body)
+      .digest('hex');
+
+    if (signature !== expectedSignature) {
+      res.status(401).json({ error: 'Invalid signature' });
+      return;
+    }
+
+    const { jobId, status, videoId, audioId, duration, sceneCount, error, progress, step } = req.body;
+
+    if (!jobId || !status) {
+      res.status(400).json({ error: 'Missing jobId or status' });
+      return;
+    }
+
+    console.log(`🔗 Webhook received for job ${jobId}: ${status}${progress ? ` (${progress}%)` : ''}`);
+
+    // Only update database status for final states
+    if (status === 'completed' || status === 'failed') {
+      await updateJobStatus(jobId, status, error || undefined);
+    }
+
+    // Broadcast to SSE clients (including progress updates)
+    broadcastJobUpdate(jobId, { status, videoId, audioId, duration, sceneCount, error, progress, step });
+
+    // Log completion details
+    if (status === 'completed') {
+      console.log(`✅ Job ${jobId} completed successfully. Video ID: ${videoId}, Audio ID: ${audioId}, Duration: ${duration}s`);
+    } else if (status === 'failed') {
+      console.log(`❌ Job ${jobId} failed: ${error}`);
+    } else if (status === 'progress') {
+      console.log(`📊 Job ${jobId} progress: ${progress}% - ${step || 'processing'}`);
+    }
+
+    res.json({ received: true });
+  } catch (err) {
+    console.error('Webhook processing error:', err);
+    res.status(500).json({ error: 'Webhook processing failed' });
+    return;
+  }
+});
+
+// Server-Sent Events for real-time job updates
+const clients = new Map<string, { res: any; jobIds: Set<string> }>();
+
+app.get('/api/jobs/events', (req, res) => {
+  const jobIds = req.query.jobIds as string;
+  if (!jobIds) {
+    res.status(400).json({ error: 'Missing jobIds parameter' });
+    return;
+  }
+
+  const jobIdSet = new Set(jobIds.split(','));
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Cache-Control',
+  });
+
+  const clientId = Date.now().toString() + Math.random().toString(36);
+  clients.set(clientId, { res, jobIds: jobIdSet });
+
+  req.on('close', () => {
+    clients.delete(clientId);
+  });
+});
+
+function broadcastJobUpdate(jobId: string, data: any) {
+  for (const [clientId, client] of clients) {
+    if (client.jobIds.has(jobId)) {
+      client.res.write(`data: ${JSON.stringify({ jobId, ...data })}\n\n`);
+    }
+  }
+}
+
+// Test endpoint to create a simple test video
+app.post('/api/test-video', async (req, res) => {
+  try {
+    const { walletAddress } = req.body;
+    if (!walletAddress) {
+      res.status(400).json({ error: 'walletAddress required' });
+      return;
+    }
+
+    // Create a simple test video buffer
+    const { createCanvas } = await import('canvas');
+    const canvas = createCanvas(640, 360);
+    const ctx = canvas.getContext('2d');
+    
+    // White background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 640, 360);
+    
+    // Add some text
+    ctx.fillStyle = '#000000';
+    ctx.font = '48px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('Test Video', 320, 180);
+    
+    // Create a simple MP4-like buffer (this won't be valid MP4 but will test storage/serving)
+    const testBuffer = Buffer.from('test video data that is not real mp4 but tests the pipeline');
+    
+    // Store it
+    const jobId = 'test-' + Date.now();
+    const videoId = await storeVideo(jobId, walletAddress, testBuffer, 10, 'mp4');
+    
+    res.json({ 
+      success: true, 
+      videoId, 
+      url: `/api/videos/${videoId}`,
+      bufferSize: testBuffer.length 
+    });
+  } catch (err) {
+    console.error('Test video creation error:', err);
+    res.status(500).json({ error: 'Failed to create test video' });
+  }
+});
+app.get('/api/debug/video/:videoId', async (req, res) => {
+  try {
+    const { videoId } = req.params;
+    
+    const videoBuffer = await getVideoByVideoId(videoId);
+
+    if (!videoBuffer) {
+      res.status(404).json({ error: 'Video not found' });
+      return;
+    }
+
+    res.json({
+      videoId,
+      bufferSize: videoBuffer.length,
+      firstBytes: videoBuffer.slice(0, 20).toString('hex'),
+      isMP4: videoBuffer.slice(4, 8).toString() === 'ftyp',
+      header: videoBuffer.slice(0, 12).toString('hex')
+    });
+  } catch (err) {
+    console.error('Error debugging video:', err);
+    res.status(500).json({ error: 'Failed to debug video' });
+  }
+});
+
+// Debug endpoint to list videos for a wallet
+app.get('/api/debug/videos/:walletAddress', async (req, res) => {
+  try {
+    const { walletAddress } = req.params;
+    
+    const result = await pool.query(
+      'SELECT video_id, job_id, duration_sec, format, created_at FROM videos WHERE wallet_address = $1 ORDER BY created_at DESC LIMIT 10',
+      [walletAddress]
+    );
+    
+    res.json({
+      walletAddress,
+      videos: result.rows
+    });
+  } catch (err) {
+    console.error('Error listing videos:', err);
+    res.status(500).json({ error: 'Failed to list videos' });
+  }
+});
+
 app.get('/api/db/health', async (_req, res) => {
   try {
     await testConnection();

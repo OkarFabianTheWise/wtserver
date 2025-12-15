@@ -7,6 +7,7 @@ This README explains the project structure, how the parts connect, how to run th
 **Repository layout**
 
 - `src/` - Main server code and helpers
+
   - `server.ts` - Express server. Serves `src/output` statically and mounts the API routes under `/api`.
   - `cli.ts` - Command-line interface for local usage (analyze a file and optionally generate voice/video).
   - `codeAnalyzer.ts` - Uses OpenAI to convert code into segmented narration or tutorial text.
@@ -26,6 +27,7 @@ Notes: small re-export stubs exist in `src/` so existing imports remain compatib
 
 - Frontend POSTs to `/api/generate` with a JSON body containing the script text.
 - `weaveit-generator/generateRoute.ts` receives the request, optionally generates a `contentId`, and:
+
   1. Calls `enhanceScript` from `src/codeAnalyzer.ts` to produce a narrated explanation (segmented or continuous text).
   2. Calls `generateSpeech` (from `src/textToSpeech.ts`) to produce an `.mp3` voiceover saved to `src/output/<id>.mp3`.
   3. Calls `generateScrollingScriptVideo` (from `src/videoGenerator.ts`) which makes a tall image or slide images, produces a scrolling/cropped video with `ffmpeg`, merges audio, and saves `src/output/<id>.mp4`.
@@ -36,25 +38,43 @@ Notes: small re-export stubs exist in `src/` so existing imports remain compatib
 **API endpoints**
 
 - POST `/api/generate`
-  - Request body: `{"script": string, "title"?: string, "transactionSignature"?: string}`
-  - Synchronous behavior: current implementation waits for TTS + FFmpeg to finish and responds with JSON containing `contentId` and `videoUrl`.
+  - Request body: `{"script": string, "title"?: string, "walletAddress": string}`
+  - Asynchronous behavior: Returns immediately with `jobId` and `status: "generating"`. Processing happens in background.
   - Example using `curl`:
 
 ```bash
 curl -X POST 'http://localhost:3001/api/generate' \
   -H 'Content-Type: application/json' \
-  -d '{"script":"console.log(\"hello\")","title":"Hello demo"}'
+  -d '{"script":"console.log(\"hello\")","title":"Hello demo","walletAddress":"abc123"}'
 ```
 
+- POST `/api/generate/audio`
+
+  - Request body: `{"script": string, "title"?: string, "walletAddress": string}`
+  - Asynchronous audio-only generation.
+
+- POST `/api/generate/narrative`
+
+  - Request body: `{"script": string, "title"?: string, "walletAddress": string}`
+  - Asynchronous narrative video generation.
+
 - GET `/api/videos/status/:id`
-  - Returns JSON with `ready`, `status`, and `contentUrl` pointing to `/output/<id>.mp4` or `/output/<id>.mp3`.
+  - Returns JSON with `status`, `ready`, `error`, etc. for polling.
   - Example:
 
 ```bash
-curl 'http://localhost:3001/api/videos/status/<contentId>'
+curl 'http://localhost:3001/api/videos/status/<jobId>'
 ```
 
-- Static media: `GET /output/<id>.mp4` serves the generated video file directly.
+- GET `/api/jobs/events?jobIds=<jobId1>,<jobId2>`
+
+  - Server-Sent Events endpoint for real-time job status updates.
+
+- POST `/api/webhooks/job-update`
+
+  - Internal webhook endpoint for job status and progress updates (secured with HMAC signature).
+
+- Static media: `GET /api/videos/job/:jobId` serves the generated video file directly.
 
 **Local development / prerequisites**
 
@@ -87,16 +107,32 @@ npx ts-node src/cli.ts analyze -f path/to/script.ts --voice --video
 
 **Behavioral notes & production recommendations**
 
-- Synchronous vs asynchronous: The current `POST /api/generate` implementation runs TTS and FFmpeg inside the request handler and only responds when finished. This is simple but not ideal for production because:
-  - Requests may take a long time (tens of seconds to minutes) which can lead to client or proxy timeouts.
-  - It blocks server resources.
+- Asynchronous job processing: The API now uses webhooks for job completion. When a generation request is made:
+
+  1. Job is created in database with status "generating"
+  2. Request returns immediately with `jobId`
+  3. Background processing generates the content
+  4. On completion/failure, webhook is sent to update database
+  5. Frontend can poll `/api/videos/status/:id` or use SSE at `/api/jobs/events`
+
+- Webhook security: Webhooks are signed with HMAC-SHA256. Set `WEBHOOK_SECRET` in environment variables.
+
+- Real-time updates: Use Server-Sent Events (SSE) for instant UI updates:
+  ```javascript
+  const eventSource = new EventSource("/api/jobs/events?jobIds=" + jobId);
+  eventSource.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    console.log("Job update:", data);
+  };
+  ```
 
 Recommended production improvements:
-  - Convert generation into an asynchronous job: return `202 Accepted` with a `contentId`, enqueue a job (Redis/Bull, RabbitMQ, or a simple worker process), and let the frontend poll `/api/videos/status/:id`.
-  - Provide progress updates via Server-Sent Events (SSE) or WebSockets if you want real-time progress in the frontend.
-  - Add authentication and rate-limiting to protect the TTS / OpenAI usage.
-  - Add strict request size limits (body parser limits) and input validation.
-  - Persist metadata about jobs (timestamps, user, size) to a lightweight DB if auditing is needed.
+
+- Use a proper job queue (Bull, Redis) for better scalability
+- Add authentication and rate-limiting
+- Implement WebSocket connections for bidirectional communication
+- Add job retry logic and dead letter queues
+- Monitor webhook delivery and implement retry mechanisms
 
 **Security & Cost**
 
@@ -117,6 +153,7 @@ Recommended production improvements:
 If you'd like either of those, tell me which approach you prefer and I will implement it.
 
 ---
+
 Generated by repository automation — keep this README updated as code moves between `src/` and `weaveit-generator/`.
 
 **Quick Frontend Example**
@@ -125,17 +162,17 @@ This minimal example demonstrates how a frontend can POST the script, poll for r
 
 ```javascript
 // POST the script
-const resp = await fetch('http://localhost:3001/api/generate', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ script: "console.log('hello')", title: 'Demo' })
+const resp = await fetch("http://localhost:3001/api/generate", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ script: "console.log('hello')", title: "Demo" }),
 });
 const { contentId } = await resp.json();
 
 // Poll status
 let ready = false;
 while (!ready) {
-  await new Promise(r => setTimeout(r, 2000));
+  await new Promise((r) => setTimeout(r, 2000));
   const s = await fetch(`http://localhost:3001/api/videos/status/${contentId}`);
   const data = await s.json();
   if (data.ready) ready = true;
@@ -143,7 +180,7 @@ while (!ready) {
 
 // Show video
 const videoUrl = `http://localhost:3001/output/${contentId}.mp4`;
-document.querySelector('#player').src = videoUrl;
+document.querySelector("#player").src = videoUrl;
 ```
 
 **Environment variables**
@@ -169,7 +206,9 @@ document.querySelector('#player').src = videoUrl;
 - Concurrency: if many users submit jobs simultaneously, convert generation to background jobs to avoid exhausting resources.
 
 ---
+
 If you'd like I can also:
+
 - Convert `/api/generate` to enqueue background jobs and return `202 Accepted` immediately.
 - Add SSE or WebSocket progress events so the frontend receives real-time logs/progress.
 - Create a sample HTML/JS frontend that uploads scripts and displays status/video.
