@@ -1,5 +1,5 @@
 import express from 'express';
-import { getUserInfo, expireTrialsForWallet } from './db';
+import { getUserInfo, expireTrialsForWallet } from './db.js';
 const router = express.Router();
 // GET /api/users/:walletAddress/points
 // Returns { walletAddress, points, trial_expires_at }

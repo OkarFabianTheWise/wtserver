@@ -3,6 +3,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import crypto from 'crypto';
+import { WebSocketServer } from 'ws';
+import http from 'http';
 import videosStatusRoute from './weaveit-generator/videosStatusRoute.js';
 import generateRoute from './weaveit-generator/generateRoute.js';
 import generateAudioRoute from './weaveit-generator/generateAudioRoute.js';
@@ -10,12 +12,21 @@ import generateNarrativeRoute from './weaveit-generator/generateNarrativeRoute.j
 import pool, { testConnection, getVideoByJobId, getVideoByVideoId, getVideosByWallet, getAudioByJobId, getAudioByAudioId, getContentByWallet, getUserInfo, getCompletedJobsCount, getTotalDurationSecondsForWallet, getTotalUsersCount, getTotalVideosCreated, getTotalFailedJobs, updateJobStatus, storeVideo } from './db.js';
 import paymentsRoute from './paymentsRoute.js';
 import usersRoute from './usersRoute.js';
+import { wsManager } from './websocket.js';
 
 // Load environment variables from root .env file
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
 const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 3001;
+
+// WebSocket server
+const wss = new WebSocketServer({ server });
+
+wss.on('connection', (ws, request) => {
+  wsManager.handleConnection(ws, request);
+});
 
 app.use(cors());
 app.use(express.json());
@@ -32,7 +43,7 @@ app.use('/api', usersRoute);
 app.get('/api/videos/job/:jobId', async (req, res) => {
   try {
     const { jobId } = req.params;
-    
+
     const videoBuffer = await getVideoByJobId(jobId);
 
     if (!videoBuffer) {
@@ -57,7 +68,7 @@ app.get('/api/videos/job/:jobId', async (req, res) => {
 app.get('/api/videos/:videoId', async (req, res) => {
   try {
     const { videoId } = req.params;
-    
+
     const videoBuffer = await getVideoByVideoId(videoId);
 
     if (!videoBuffer) {
@@ -86,7 +97,7 @@ app.get('/api/videos/:videoId', async (req, res) => {
 app.get('/api/wallet/:walletAddress/videos', async (req, res) => {
   try {
     const { walletAddress } = req.params;
-    
+
     const videos = await getVideosByWallet(walletAddress);
 
     res.json({
@@ -112,7 +123,7 @@ app.get('/api/wallet/:walletAddress/videos', async (req, res) => {
 app.get('/api/wallet/:walletAddress/content', async (req, res) => {
   try {
     const { walletAddress } = req.params;
-    
+
     const content = await getContentByWallet(walletAddress);
 
     res.json({
@@ -149,7 +160,7 @@ app.get('/api/stats', async (req, res) => {
     ]);
 
     const totalMinutes = Number((totalSeconds / 60).toFixed(2));
-    const successRate = totalVideosCreated > 0 
+    const successRate = totalVideosCreated > 0
       ? Number(((completedJobsCount / totalVideosCreated) * 100).toFixed(2))
       : 0;
 
@@ -173,7 +184,7 @@ app.get('/api/stats', async (req, res) => {
 app.get('/api/audio/job/:jobId', async (req, res) => {
   try {
     const { jobId } = req.params;
-    
+
     const audioBuffer = await getAudioByJobId(jobId);
 
     if (!audioBuffer) {
@@ -197,7 +208,7 @@ app.get('/api/audio/job/:jobId', async (req, res) => {
 app.get('/api/audio/:audioId', async (req, res) => {
   try {
     const { audioId } = req.params;
-    
+
     const audioBuffer = await getAudioByAudioId(audioId);
 
     if (!audioBuffer) {
@@ -322,29 +333,29 @@ app.post('/api/test-video', async (req, res) => {
     const { createCanvas } = await import('canvas');
     const canvas = createCanvas(640, 360);
     const ctx = canvas.getContext('2d');
-    
+
     // White background
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, 640, 360);
-    
+
     // Add some text
     ctx.fillStyle = '#000000';
     ctx.font = '48px Arial';
     ctx.textAlign = 'center';
     ctx.fillText('Test Video', 320, 180);
-    
+
     // Create a simple MP4-like buffer (this won't be valid MP4 but will test storage/serving)
     const testBuffer = Buffer.from('test video data that is not real mp4 but tests the pipeline');
-    
+
     // Store it
     const jobId = 'test-' + Date.now();
     const videoId = await storeVideo(jobId, walletAddress, testBuffer, 10, 'mp4');
-    
-    res.json({ 
-      success: true, 
-      videoId, 
+
+    res.json({
+      success: true,
+      videoId,
       url: `/api/videos/${videoId}`,
-      bufferSize: testBuffer.length 
+      bufferSize: testBuffer.length
     });
   } catch (err) {
     console.error('Test video creation error:', err);
@@ -354,7 +365,7 @@ app.post('/api/test-video', async (req, res) => {
 app.get('/api/debug/video/:videoId', async (req, res) => {
   try {
     const { videoId } = req.params;
-    
+
     const videoBuffer = await getVideoByVideoId(videoId);
 
     if (!videoBuffer) {
@@ -379,12 +390,12 @@ app.get('/api/debug/video/:videoId', async (req, res) => {
 app.get('/api/debug/videos/:walletAddress', async (req, res) => {
   try {
     const { walletAddress } = req.params;
-    
+
     const result = await pool.query(
       'SELECT video_id, job_id, duration_sec, format, created_at FROM videos WHERE wallet_address = $1 ORDER BY created_at DESC LIMIT 10',
       [walletAddress]
     );
-    
+
     res.json({
       walletAddress,
       videos: result.rows
@@ -409,6 +420,7 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`WebSocket server available at ws://localhost:${PORT}`);
 });

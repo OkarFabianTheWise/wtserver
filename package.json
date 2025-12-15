@@ -41,6 +41,7 @@
     "@solana/wallet-adapter-wallets": "^0.19.37",
     "@solana/web3.js": "^1.98.0",
     "@tailwindcss/postcss": "^4.1.10",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.5.2",
     "axios": "^1.8.4",
     "bs58": "^6.0.0",
@@ -58,7 +59,8 @@
     "pg": "^8.16.3",
     "react": "^19.1.0",
     "react-router-dom": "^7.6.2",
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "@types/commander": "^2.12.5",

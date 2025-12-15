@@ -146,6 +146,9 @@ export async function getJobStatus(jobId) {
 }
 // Video storage
 export async function storeVideo(jobId, walletAddress, videoData, durationSec, format = 'mp4', audioData) {
+    console.log(`💾 Storing video for job ${jobId}: ${videoData.length} bytes`);
+    console.log(`💾 Video first 20 bytes: ${videoData.slice(0, 20).toString('hex')}`);
+    console.log(`💾 Video is MP4: ${videoData.slice(4, 8).toString() === 'ftyp'}`);
     const result = await pool.query(`INSERT INTO videos (job_id, wallet_address, video_data, duration_sec, format, audio_data) 
      VALUES ($1, $2, $3, $4, $5, $6) 
      RETURNING video_id`, [jobId, walletAddress, videoData, durationSec, format, audioData || null]);
@@ -170,7 +173,16 @@ export async function getVideoByJobId(jobId) {
 }
 export async function getVideoByVideoId(videoId) {
     const result = await pool.query('SELECT video_data FROM videos WHERE video_id = $1', [videoId]);
-    return result.rows[0]?.video_data || null;
+    const buffer = result.rows[0]?.video_data || null;
+    if (buffer) {
+        console.log(`🗄️ Retrieved video ${videoId} from DB: ${buffer.length} bytes`);
+        console.log(`🗄️ DB buffer first 20 bytes: ${buffer.slice(0, 20).toString('hex')}`);
+        console.log(`🗄️ DB buffer is MP4: ${buffer.slice(4, 8).toString() === 'ftyp'}`);
+    }
+    else {
+        console.log(`🗄️ Video ${videoId} not found in DB`);
+    }
+    return buffer;
 }
 export async function getVideosByWallet(walletAddress) {
     const result = await pool.query(`SELECT v.video_id, v.job_id, v.duration_sec, v.format, v.created_at, j.title
@@ -198,6 +210,31 @@ export async function getContentByWallet(walletAddress) {
      WHERE v.wallet_address = $1 
      ORDER BY v.created_at DESC`, [walletAddress]);
     return result.rows;
+}
+// Count completed jobs for a wallet
+export async function getCompletedJobsCount(walletAddress) {
+    const result = await pool.query(`SELECT COUNT(*)::int as count FROM video_jobs WHERE wallet_address = $1 AND status = 'completed'`, [walletAddress]);
+    return result.rows[0]?.count || 0;
+}
+// Sum total duration seconds for all content (video or audio) for a wallet
+export async function getTotalDurationSecondsForWallet(walletAddress) {
+    const result = await pool.query(`SELECT COALESCE(SUM(duration_sec), 0) as total_seconds FROM videos WHERE wallet_address = $1`, [walletAddress]);
+    return Number(result.rows[0]?.total_seconds || 0);
+}
+// Total number of users in the system
+export async function getTotalUsersCount() {
+    const result = await pool.query(`SELECT COUNT(*)::int as count FROM users`);
+    return result.rows[0]?.count || 0;
+}
+// Total number of videos created (all job statuses)
+export async function getTotalVideosCreated() {
+    const result = await pool.query(`SELECT COUNT(*)::int as count FROM video_jobs`);
+    return result.rows[0]?.count || 0;
+}
+// Number of failed jobs
+export async function getTotalFailedJobs() {
+    const result = await pool.query(`SELECT COUNT(*)::int as count FROM video_jobs WHERE status = 'failed'`);
+    return result.rows[0]?.count || 0;
 }
 // Audio retrieval
 export async function getAudioByJobId(jobId) {
@@ -236,5 +273,34 @@ export async function deductUserPoints(walletAddress, points) {
         return null; // insufficient credits
     }
     return result.rows[0]?.prompt_points || 0;
+}
+export async function saveScrollImage(jobId, imageBuffer) {
+    if (!imageBuffer || imageBuffer.length === 0) {
+        throw new Error("saveScrollImage: imageBuffer is empty");
+    }
+    const result = await pool.query(`
+    INSERT INTO scroll_images (job_id, image_data)
+    VALUES ($1, $2)
+    RETURNING image_id
+    `, [jobId, imageBuffer]);
+    return result.rows[0].image_id;
+}
+export async function getScrollImageByJobId(jobId) {
+    const result = await pool.query(`
+    SELECT image_data 
+    FROM scroll_images
+    WHERE job_id = $1
+    ORDER BY created_at DESC
+    LIMIT 1
+    `, [jobId]);
+    return result.rows[0]?.image_data ?? null;
+}
+export async function saveScrollVideo(jobId, videoBuffer) {
+    const result = await pool.query(`
+    INSERT INTO scroll_videos (job_id, video_data)
+    VALUES ($1, $2)
+    RETURNING video_id
+    `, [jobId, videoBuffer]);
+    return result.rows[0].video_id;
 }
 //# sourceMappingURL=db.js.map

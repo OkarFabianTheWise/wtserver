@@ -1,5 +1,5 @@
 import express from 'express';
-import { awardUserPoints } from './db';
+import { awardUserPoints } from './db.js';
 const router = express.Router();
 // POST /api/payments/award
 // Body: { walletAddress: string, tier?: number|string, amount?: number, points?: number, contentType?: 'audio'|'video' }

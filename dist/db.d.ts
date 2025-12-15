@@ -8,7 +8,7 @@ export declare function getUserInfo(walletAddress: string): Promise<{
     trial_expires_at: Date | null;
 } | null>;
 export declare function getUserPoints(walletAddress: string): Promise<number>;
-export declare function createVideoJob(walletAddress: string, scriptBody: string, title?: string, jobType?: 'video' | 'audio'): Promise<string>;
+export declare function createVideoJob(walletAddress: string, scriptBody: string, title?: string, jobType?: 'video' | 'audio' | 'narrative'): Promise<string>;
 export declare function updateJobStatus(jobId: string, status: 'pending' | 'generating' | 'failed' | 'completed', errorMessage?: string): Promise<void>;
 export declare function getJobStatus(jobId: string): Promise<{
     status: string;
@@ -44,6 +44,11 @@ export declare function getContentByWallet(walletAddress: string): Promise<Array
     created_at: Date;
     title: string | null;
 }>>;
+export declare function getCompletedJobsCount(walletAddress: string): Promise<number>;
+export declare function getTotalDurationSecondsForWallet(walletAddress: string): Promise<number>;
+export declare function getTotalUsersCount(): Promise<number>;
+export declare function getTotalVideosCreated(): Promise<number>;
+export declare function getTotalFailedJobs(): Promise<number>;
 export declare function getAudioByJobId(jobId: string): Promise<Buffer | null>;
 export declare function getAudioByAudioId(audioId: string): Promise<Buffer | null>;
 export declare function cleanupOldJobs(daysOld?: number): Promise<number>;
@@ -51,4 +56,7 @@ export declare function clearScriptBody(jobId: string): Promise<void>;
 export default pool;
 export declare function awardUserPoints(walletAddress: string, points: number): Promise<number>;
 export declare function deductUserPoints(walletAddress: string, points: number): Promise<number | null>;
+export declare function saveScrollImage(jobId: string, imageBuffer: Buffer): Promise<string>;
+export declare function getScrollImageByJobId(jobId: string): Promise<Buffer | null>;
+export declare function saveScrollVideo(jobId: string, videoBuffer: Buffer): Promise<string>;
 //# sourceMappingURL=db.d.ts.map
