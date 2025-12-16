@@ -1,7 +1,7 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import crypto from 'crypto';
-import { enhanceScript } from '../codeAnalyzer.js';
+import { enhanceScript, generateTitle } from '../codeAnalyzer.js';
 import { generateSpeechBuffer } from '../textToSpeech.js';
 import { generateScrollingScriptVideoBuffer } from '../videoGenerator.js';
 import { createVideoJob, updateJobStatus, storeVideo, deductUserPoints } from '../db.js';
@@ -116,7 +116,7 @@ const generateHandler = async (req: Request, res: Response): Promise<void> => {
   let jobId: string | null = null;
 
   try {
-    let { walletAddress, script, title } = req.body;
+    let { walletAddress, script, prompt } = req.body;
 
     if (!script || typeof script !== 'string' || script.trim() === '') {
       res.status(400).json({ error: 'Missing script in request body' });
@@ -129,7 +129,7 @@ const generateHandler = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    console.log('weaveit-generator: Processing tutorial request:', { title, walletAddress });
+    if (VERBOSE_LOGGING) console.log('weaveit-generator: Processing tutorial request:', { walletAddress, scriptLength: script.length, hasPrompt: !!prompt });
 
     // Check credit balance before proceeding (video costs 2 credits)
     const VIDEO_COST = 2;
@@ -143,20 +143,25 @@ const generateHandler = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // Generate title automatically based on script content
+    const title = await generateTitle(script);
+    if (VERBOSE_LOGGING) console.log('Generated title:', title);
+
     // Create job in database with job_type = 'video'
     jobId = await createVideoJob(walletAddress, script, title, 'video');
-    console.log('Created job:', jobId);
+    if (VERBOSE_LOGGING) console.log('Created job:', jobId);
 
     // Update status to generating
     await updateJobStatus(jobId, 'generating');
 
-    // Enhance the script for narration (do this synchronously before responding)
-    const explanation = await enhanceScript(script);
+    // Enhance the script for narration (use custom prompt if provided)
+    const explanation = await enhanceScript(script, prompt);
 
     // Respond immediately with job ID
     res.json({
       jobId,
       status: 'generating',
+      title,
       creditsDeducted: VIDEO_COST,
       remainingCredits: newBalance,
       message: 'Video generation started. Check status via polling or webhook.',
@@ -168,19 +173,13 @@ const generateHandler = async (req: Request, res: Response): Promise<void> => {
     });
 
   } catch (error) {
-    console.error('weaveit-generator: Video generation setup error:', error);
-
-    // Update job status to failed if we have a jobId
-    if (jobId) {
-      await updateJobStatus(jobId, 'failed', String(error)).catch(console.error);
-      await sendWebhook(jobId, 'failed', undefined, undefined, String(error));
-    }
-
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'Failed to start video generation' });
-    }
-    return;
+    if (VERBOSE_LOGGING) console.error('weaveit-generator: Video generation setup error:', error);
   }
+
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Failed to start video generation' });
+  }
+  return;
 };
 
 router.post('/generate', generateHandler);

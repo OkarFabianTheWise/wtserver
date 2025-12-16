@@ -4,7 +4,41 @@ import type { TutorialResult } from './types';
 
 config();
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+export async function generateTitle(script: string): Promise<string> {
+  try {
+    const prompt = `Generate a concise, descriptive title (max 8 words) for this code snippet. Focus on what the code does or demonstrates:
+
+${script}
+
+Respond with only the title, no quotes or extra text.`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        {
+          role: "system",
+          content: "You generate concise, descriptive titles for code snippets. Keep them under 8 words and focus on functionality."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      temperature: 0.3,
+      max_tokens: 20
+    });
+
+    const title = response.choices[0].message.content?.trim() || 'Code Tutorial';
+    return title.length > 50 ? title.substring(0, 47) + '...' : title;
+  } catch (error) {
+    console.error('Error generating title:', error);
+    return 'Code Tutorial';
+  }
+}
 
 export async function analyzeCode(code: string): Promise<TutorialResult> {
   const prompt = `Explain the following code as a tutorial for beginners. Include step-by-step reasoning and note the language:
@@ -25,9 +59,19 @@ ${code}
   };
 }
 
-export async function enhanceScript(script: string): Promise<string> {
+export async function enhanceScript(script: string, customPrompt?: string): Promise<string> {
   try {
-    const prompt = `
+    let prompt: string;
+
+    if (customPrompt && customPrompt.trim()) {
+      // Use the custom prompt provided by the user
+      prompt = `${customPrompt}
+
+Code to analyze:
+${script}`;
+    } else {
+      // Use the default prompt for scrolling tutorial
+      prompt = `
 Explain this code in small, natural segments that can be shown on screen. Format your response as segments separated by [PAUSE] markers. Each segment should be 1-2 sentences that explain what's visible on screen at that moment. The video will scroll to show new code only after each segment is narrated.
 
 For example:
@@ -40,20 +84,23 @@ Here's the code to explain:
 
 ${script}
     `;
+    }
 
     const response = await openai.chat.completions.create({
       model: "gpt-4",
       messages: [
         {
           role: "system",
-          content: "You are a code narrator creating synchronized voice-over for a scrolling code tutorial. Break your explanation into small segments marked with [PAUSE]. Each segment should match what's visible on screen at that moment. Never use phrases like 'as we can see' or 'looking at'. Just explain directly."
+          content: customPrompt && customPrompt.trim()
+            ? "You are a helpful assistant that answers questions about code. Provide clear, accurate explanations."
+            : "You are a code narrator creating synchronized voice-over for a scrolling code tutorial. Break your explanation into small segments marked with [PAUSE]. Each segment should match what's visible on screen at that moment. Never use phrases like 'as we can see' or 'looking at'. Just explain directly."
         },
         {
           role: "user",
           content: prompt
         }
       ],
-      temperature: 0.3,
+      temperature: customPrompt && customPrompt.trim() ? 0.3 : 0.3,
       max_tokens: 1500
     });
 
@@ -161,11 +208,11 @@ ${script}
     });
 
     const content = response.choices[0].message.content?.trim() || '{}';
-    
+
     // Extract JSON from response (in case there's extra text)
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     const jsonStr = jsonMatch ? jsonMatch[0] : content;
-    
+
     const parsed = JSON.parse(jsonStr);
     return parsed.scenes || [];
   } catch (error) {

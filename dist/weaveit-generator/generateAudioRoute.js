@@ -1,6 +1,6 @@
 import express from 'express';
 import crypto from 'crypto';
-import { enhanceScript } from '../codeAnalyzer.js';
+import { enhanceScript, generateTitle } from '../codeAnalyzer.js';
 import { generateSpeechBuffer } from '../textToSpeech.js';
 import { createVideoJob, updateJobStatus, storeAudio, deductUserPoints } from '../db.js';
 import { wsManager } from '../websocket.js';
@@ -8,6 +8,7 @@ const router = express.Router();
 // Environment variables
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || 'default-webhook-secret';
 const WEBHOOK_URL = process.env.WEBHOOK_URL || 'http://localhost:3001/api/webhooks/job-update';
+const VERBOSE_LOGGING = process.env.VERBOSE_LOGGING === 'true';
 // Helper function to estimate audio duration from MP3 buffer (in seconds)
 function estimateAudioDuration(buffer) {
     // MP3 bitrate estimation: use average bitrate of 128kbps
@@ -53,22 +54,27 @@ async function sendWebhook(jobId, status, audioId, duration, error) {
 // Background processing function
 async function processAudioGeneration(jobId, walletAddress, script, explanation) {
     try {
-        console.log(`🚀 Starting background processing for audio job ${jobId}`);
+        if (VERBOSE_LOGGING)
+            console.log(`🚀 Starting background processing for audio job ${jobId}`);
         // Emit initial progress
         wsManager.emitProgress(jobId, 0, 'generating', 'Starting audio generation...');
         // Generate speech buffer (no file saving)
-        wsManager.emitProgress(jobId, 20, 'generating', 'Generating audio narration...');
+        wsManager.emitProgress(jobId, 2, 'generating', 'Initializing audio generation...');
+        wsManager.emitProgress(jobId, 5, 'generating', 'Generating audio narration...');
         const audioBuffer = await generateSpeechBuffer(explanation);
-        console.log(`Generated audio: ${audioBuffer.length} bytes`);
-        wsManager.emitProgress(jobId, 60, 'generating', 'Audio narration completed');
+        if (VERBOSE_LOGGING)
+            console.log(`Generated audio: ${audioBuffer.length} bytes`);
+        wsManager.emitProgress(jobId, 20, 'generating', 'Audio narration completed');
         // Calculate duration from audio buffer (in seconds)
         const durationSec = estimateAudioDuration(audioBuffer);
-        console.log(`Estimated duration: ${durationSec} seconds`);
-        wsManager.emitProgress(jobId, 80, 'generating', 'Calculating audio duration...');
+        if (VERBOSE_LOGGING)
+            console.log(`Estimated duration: ${durationSec} seconds`);
+        wsManager.emitProgress(jobId, 25, 'generating', 'Calculating audio duration...');
         // Store audio in database
         const audioId = await storeAudio(jobId, walletAddress, audioBuffer, durationSec);
-        console.log('Stored audio in database:', audioId);
-        wsManager.emitProgress(jobId, 95, 'generating', 'Storing audio in database...');
+        if (VERBOSE_LOGGING)
+            console.log('Stored audio in database:', audioId);
+        wsManager.emitProgress(jobId, 30, 'generating', 'Storing audio in database...');
         // Update job status to completed
         await updateJobStatus(jobId, 'completed');
         // Send webhook
@@ -77,9 +83,8 @@ async function processAudioGeneration(jobId, walletAddress, script, explanation)
         wsManager.emitCompleted(jobId, audioId, durationSec);
     }
     catch (error) {
-        console.error(`❌ Background processing error for audio job ${jobId}:`, error);
-        // Update job status to failed
-        await updateJobStatus(jobId, 'failed', String(error));
+        if (VERBOSE_LOGGING)
+            console.error(`❌ Background processing error for audio job ${jobId}:`, error);
         // Send webhook
         await sendWebhook(jobId, 'failed', undefined, undefined, String(error));
         // Emit error
@@ -90,7 +95,7 @@ async function processAudioGeneration(jobId, walletAddress, script, explanation)
 const generateAudioHandler = async (req, res) => {
     let jobId = null;
     try {
-        let { walletAddress, script, title } = req.body;
+        let { walletAddress, script, prompt } = req.body;
         if (!script || typeof script !== 'string' || script.trim() === '') {
             res.status(400).json({ error: 'Missing script in request body' });
             return;
@@ -100,7 +105,8 @@ const generateAudioHandler = async (req, res) => {
             res.status(400).json({ error: 'Missing walletAddress in request body' });
             return;
         }
-        console.log('weaveit-generator: Processing audio-only request:', { title, walletAddress });
+        if (VERBOSE_LOGGING)
+            console.log('weaveit-generator: Processing audio-only request:', { walletAddress, scriptLength: script.length, hasPrompt: !!prompt });
         // Check credit balance before proceeding (audio costs 1 credit)
         const AUDIO_COST = 1;
         const newBalance = await deductUserPoints(walletAddress, AUDIO_COST);
@@ -112,17 +118,23 @@ const generateAudioHandler = async (req, res) => {
             });
             return;
         }
+        // Generate title automatically based on script content
+        const title = await generateTitle(script);
+        if (VERBOSE_LOGGING)
+            console.log('Generated title:', title);
         // Create job in database with job_type = 'audio'
         jobId = await createVideoJob(walletAddress, script, title, 'audio');
-        console.log('Created audio job:', jobId);
+        if (VERBOSE_LOGGING)
+            console.log('Created audio job:', jobId);
         // Update status to generating
         await updateJobStatus(jobId, 'generating');
-        // Enhance the script for narration (do this synchronously before responding)
-        const explanation = await enhanceScript(script);
+        // Enhance the script for narration (use custom prompt if provided)
+        const explanation = await enhanceScript(script, prompt);
         // Respond immediately with job ID
         res.json({
             jobId,
             status: 'generating',
+            title,
             creditsDeducted: AUDIO_COST,
             remainingCredits: newBalance,
             message: 'Audio generation started. Check status via polling or webhook.',

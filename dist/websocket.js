@@ -1,9 +1,11 @@
 import WebSocket from 'ws';
+const VERBOSE_LOGGING = process.env.VERBOSE_LOGGING === 'true';
 class WebSocketManager {
     clients = new Map();
     jobSubscribers = new Map();
     handleConnection(ws, request) {
-        console.log('New WebSocket connection established');
+        if (VERBOSE_LOGGING)
+            console.log('New WebSocket connection established');
         const client = {
             ws,
             subscribedJobs: new Set()
@@ -15,17 +17,19 @@ class WebSocketManager {
                 this.handleMessage(client, message);
             }
             catch (err) {
-                console.error('Invalid WebSocket message:', err);
+                if (VERBOSE_LOGGING)
+                    console.error('Invalid WebSocket message:', err);
                 ws.send(JSON.stringify({ error: 'Invalid message format' }));
             }
         });
         ws.on('close', () => {
-            console.log('WebSocket connection closed');
+            if (VERBOSE_LOGGING)
+                console.log('WebSocket connection closed');
             this.cleanupClient(client);
         });
         ws.on('error', (err) => {
-            console.error('WebSocket error:', err);
-            this.cleanupClient(client);
+            if (VERBOSE_LOGGING)
+                console.error('WebSocket error:', err);
         });
         // Send welcome message
         ws.send(JSON.stringify({ type: 'connected', message: 'WebSocket connected successfully' }));
@@ -48,7 +52,8 @@ class WebSocketManager {
             this.jobSubscribers.set(jobId, new Set());
         }
         this.jobSubscribers.get(jobId).add(client.ws);
-        console.log(`Client subscribed to job ${jobId}`);
+        if (VERBOSE_LOGGING)
+            console.log(`Client subscribed to job ${jobId}`);
         client.ws.send(JSON.stringify({ type: 'subscribed', jobId }));
     }
     unsubscribeFromJob(client, jobId) {
@@ -60,7 +65,8 @@ class WebSocketManager {
                 this.jobSubscribers.delete(jobId);
             }
         }
-        console.log(`Client unsubscribed from job ${jobId}`);
+        if (VERBOSE_LOGGING)
+            console.log(`Client unsubscribed from job ${jobId}`);
         client.ws.send(JSON.stringify({ type: 'unsubscribed', jobId }));
     }
     cleanupClient(client) {
@@ -89,7 +95,8 @@ class WebSocketManager {
                 ws.send(messageStr);
             }
         });
-        console.log(`Emitted progress for job ${jobId}: ${progress}% - ${status}`);
+        if (VERBOSE_LOGGING)
+            console.log(`Emitted progress for job ${jobId}: ${progress}% - ${status}`);
     }
     // Method to emit completion
     emitCompleted(jobId, videoId, duration) {
@@ -109,7 +116,8 @@ class WebSocketManager {
                 ws.send(messageStr);
             }
         });
-        console.log(`Emitted completion for job ${jobId}`);
+        if (VERBOSE_LOGGING)
+            console.log(`Emitted completion for job ${jobId}`);
     }
     // Method to emit error
     emitError(jobId, error) {
@@ -128,7 +136,8 @@ class WebSocketManager {
                 ws.send(messageStr);
             }
         });
-        console.log(`Emitted error for job ${jobId}: ${error}`);
+        if (VERBOSE_LOGGING)
+            console.log(`Emitted error for job ${jobId}: ${error}`);
     }
 }
 export const wsManager = new WebSocketManager();

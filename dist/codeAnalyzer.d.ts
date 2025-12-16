@@ -1,6 +1,7 @@
 import type { TutorialResult } from './types';
+export declare function generateTitle(script: string): Promise<string>;
 export declare function analyzeCode(code: string): Promise<TutorialResult>;
-export declare function enhanceScript(script: string): Promise<string>;
+export declare function enhanceScript(script: string, customPrompt?: string): Promise<string>;
 export declare function enhanceScriptDirect(script: string): Promise<string>;
 /**
  * Convert technical content into narrative scenes for 2D animation

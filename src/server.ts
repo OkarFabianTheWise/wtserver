@@ -268,13 +268,13 @@ app.post('/api/webhooks/job-update', async (req, res) => {
     broadcastJobUpdate(jobId, { status, videoId, audioId, duration, sceneCount, error, progress, step });
 
     // Log completion details
-    if (status === 'completed') {
-      console.log(`✅ Job ${jobId} completed successfully. Video ID: ${videoId}, Audio ID: ${audioId}, Duration: ${duration}s`);
-    } else if (status === 'failed') {
-      console.log(`❌ Job ${jobId} failed: ${error}`);
-    } else if (status === 'progress') {
-      console.log(`📊 Job ${jobId} progress: ${progress}% - ${step || 'processing'}`);
-    }
+    // if (status === 'completed') {
+    //   console.log(`✅ Job ${jobId} completed successfully. Video ID: ${videoId}, Audio ID: ${audioId}, Duration: ${duration}s`);
+    // } else if (status === 'failed') {
+    //   console.log(`❌ Job ${jobId} failed: ${error}`);
+    // } else if (status === 'progress') {
+    //   console.log(`📊 Job ${jobId} progress: ${progress}% - ${step || 'processing'}`);
+    // }
 
     res.json({ received: true });
   } catch (err) {
@@ -362,6 +362,7 @@ app.post('/api/test-video', async (req, res) => {
     res.status(500).json({ error: 'Failed to create test video' });
   }
 });
+
 app.get('/api/debug/video/:videoId', async (req, res) => {
   try {
     const { videoId } = req.params;

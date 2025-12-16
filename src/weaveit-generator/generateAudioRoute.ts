@@ -1,7 +1,7 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import crypto from 'crypto';
-import { enhanceScript } from '../codeAnalyzer.js';
+import { enhanceScript, generateTitle } from '../codeAnalyzer.js';
 import { generateSpeechBuffer } from '../textToSpeech.js';
 import { createVideoJob, updateJobStatus, storeAudio, deductUserPoints } from '../db.js';
 import { wsManager } from '../websocket.js';
@@ -108,7 +108,7 @@ const generateAudioHandler = async (req: Request, res: Response): Promise<void> 
   let jobId: string | null = null;
 
   try {
-    let { walletAddress, script, title } = req.body;
+    let { walletAddress, script, prompt } = req.body;
 
     if (!script || typeof script !== 'string' || script.trim() === '') {
       res.status(400).json({ error: 'Missing script in request body' });
@@ -121,7 +121,7 @@ const generateAudioHandler = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    console.log('weaveit-generator: Processing audio-only request:', { title, walletAddress });
+    if (VERBOSE_LOGGING) console.log('weaveit-generator: Processing audio-only request:', { walletAddress, scriptLength: script.length, hasPrompt: !!prompt });
 
     // Check credit balance before proceeding (audio costs 1 credit)
     const AUDIO_COST = 1;
@@ -135,20 +135,25 @@ const generateAudioHandler = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
+    // Generate title automatically based on script content
+    const title = await generateTitle(script);
+    if (VERBOSE_LOGGING) console.log('Generated title:', title);
+
     // Create job in database with job_type = 'audio'
     jobId = await createVideoJob(walletAddress, script, title, 'audio');
-    console.log('Created audio job:', jobId);
+    if (VERBOSE_LOGGING) console.log('Created audio job:', jobId);
 
     // Update status to generating
     await updateJobStatus(jobId, 'generating');
 
-    // Enhance the script for narration (do this synchronously before responding)
-    const explanation = await enhanceScript(script);
+    // Enhance the script for narration (use custom prompt if provided)
+    const explanation = await enhanceScript(script, prompt);
 
     // Respond immediately with job ID
     res.json({
       jobId,
       status: 'generating',
+      title,
       creditsDeducted: AUDIO_COST,
       remainingCredits: newBalance,
       message: 'Audio generation started. Check status via polling or webhook.',

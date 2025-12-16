@@ -18,44 +18,52 @@ This README explains the project structure, how the parts connect, how to run th
   - `types.ts`, `config.ts`, etc. - small helpers and types.
 
 - `weaveit-generator/` - Canonical API route implementations
-  - `generateRoute.ts` - POST `/api/generate` — accepts `{ script, title?, transactionSignature? }`, enhances the script with `codeAnalyzer`, produces audio and video into `src/output`, and returns `{ contentId, videoUrl }` when finished.
+  - `generateRoute.ts` - POST `/api/generate` — accepts `{ script, walletAddress, prompt? }`, auto-generates title, enhances the script with `codeAnalyzer`, produces audio and video, and returns `{ jobId, title, status }`.
   - `videosStatusRoute.ts` - GET `/api/videos/status/:id` — checks whether `/src/output/:id.mp4` or `/src/output/:id.mp3` exists and returns a JSON status.
 
 Notes: small re-export stubs exist in `src/` so existing imports remain compatible while the canonical implementations live under `weaveit-generator/`.
 
 **How the pieces connect**
 
-- Frontend POSTs to `/api/generate` with a JSON body containing the script text.
-- `weaveit-generator/generateRoute.ts` receives the request, optionally generates a `contentId`, and:
+- Frontend POSTs to `/api/generate` with a JSON body containing the script text, wallet address, and optional prompt.
+- `weaveit-generator/generateRoute.ts` receives the request and:
 
-  1. Calls `enhanceScript` from `src/codeAnalyzer.ts` to produce a narrated explanation (segmented or continuous text).
-  2. Calls `generateSpeech` (from `src/textToSpeech.ts`) to produce an `.mp3` voiceover saved to `src/output/<id>.mp3`.
-  3. Calls `generateScrollingScriptVideo` (from `src/videoGenerator.ts`) which makes a tall image or slide images, produces a scrolling/cropped video with `ffmpeg`, merges audio, and saves `src/output/<id>.mp4`.
-  4. Returns `{ contentId, videoUrl }` when the generation completes successfully.
+  1. Auto-generates a descriptive title based on the script content using AI.
+  2. Uses the optional `prompt` field to customize the AI explanation (or default scrolling tutorial format if not provided).
+  3. Calls `enhanceScript` from `src/codeAnalyzer.ts` to produce a narrated explanation.
+  4. Calls `generateSpeech` (from `src/textToSpeech.ts`) to produce an `.mp3` voiceover.
+  5. Calls `generateScrollingScriptVideo` (from `src/videoGenerator.ts`) to create a scrolling video with `ffmpeg`.
+  6. Returns `{ jobId, title, status: "generating" }` immediately, with real-time progress via WebSockets.
 
-- The server (`src/server.ts`) serves the generated files at `http://<host>:<port>/output/<id>.mp4` (static) and provides a status endpoint at `/api/videos/status/:id` to allow polling.
+- The server provides WebSocket connections at `ws://localhost:3001` for live progress updates (2%, 5%, 10%, etc.).
+- Generated media is stored in the database and served via `/api/videos/job/:jobId`.
 
 **API endpoints**
 
 - POST `/api/generate`
-  - Request body: `{"script": string, "title"?: string, "walletAddress": string}`
+  - Request body: `{"script": string, "walletAddress": string, "prompt"?: string}`
+  - Title is automatically generated from script content
+  - Optional `prompt` field allows custom questions about the code
   - Asynchronous behavior: Returns immediately with `jobId` and `status: "generating"`. Processing happens in background.
   - Example using `curl`:
 
 ```bash
 curl -X POST 'http://localhost:3001/api/generate' \
   -H 'Content-Type: application/json' \
-  -d '{"script":"console.log(\"hello\")","title":"Hello demo","walletAddress":"abc123"}'
+  -d '{"script":"console.log(\"hello\")","walletAddress":"abc123","prompt":"Explain what this code does"}'
 ```
 
 - POST `/api/generate/audio`
 
-  - Request body: `{"script": string, "title"?: string, "walletAddress": string}`
+  - Request body: `{"script": string, "walletAddress": string, "prompt"?: string}`
+  - Title is automatically generated from script content
+  - Optional `prompt` field allows custom questions about the code
   - Asynchronous audio-only generation.
 
 - POST `/api/generate/narrative`
 
-  - Request body: `{"script": string, "title"?: string, "walletAddress": string}`
+  - Request body: `{"script": string, "walletAddress": string}`
+  - Title is automatically generated from script content
   - Asynchronous narrative video generation.
 
 - GET `/api/videos/status/:id`
@@ -166,7 +174,7 @@ function showError(error) {
 
 - `connected`: Connection established
 - `subscribed`: Successfully subscribed to a job
-- `progress`: Generation progress update with percentage, status, and message
+- `progress`: Generation progress update with detailed percentage increments (2%, 5%, 10%, etc.), status, and descriptive message
 - `completed`: Job finished successfully with videoId and duration
 - `error`: Job failed with error message
 
@@ -211,19 +219,23 @@ npx ts-node src/cli.ts analyze -f path/to/script.ts --voice --video
 - Asynchronous job processing: The API now uses webhooks for job completion. When a generation request is made:
 
   1. Job is created in database with status "generating"
-  2. Request returns immediately with `jobId`
-  3. Background processing generates the content
-  4. On completion/failure, webhook is sent to update database
-  5. Frontend can poll `/api/videos/status/:id` or use SSE at `/api/jobs/events`
+  2. Auto-generated title based on script content
+  3. Optional custom prompt for AI explanation
+  4. Request returns immediately with `jobId`, `title`, and `status: "generating"`
+  5. Background processing generates the content with detailed progress updates
+  6. Frontend can use WebSockets for real-time progress or poll `/api/videos/status/:id`
 
 - Webhook security: Webhooks are signed with HMAC-SHA256. Set `WEBHOOK_SECRET` in environment variables.
 
-- Real-time updates: Use Server-Sent Events (SSE) for instant UI updates:
+- Real-time updates: Use WebSockets for instant UI updates with detailed progress (2%, 5%, 10%, etc.):
   ```javascript
-  const eventSource = new EventSource("/api/jobs/events?jobIds=" + jobId);
-  eventSource.onmessage = (event) => {
+  const ws = new WebSocket('ws://localhost:3001');
+  ws.onopen = () => ws.send(JSON.stringify({ action: 'subscribe', jobId }));
+  ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
-    console.log("Job update:", data);
+    if (data.type === 'progress') {
+      console.log(`Progress: ${data.progress}% - ${data.message}`);
+    }
   };
   ```
 
@@ -248,9 +260,11 @@ Recommended production improvements:
 
 **Where to go next**
 
-- ✅ WebSocket-based progress events implemented for real-time UI updates
+- ✅ WebSocket-based progress events implemented with detailed granularity (2%, 5%, 10%, etc.)
+- ✅ Automatic title generation from script content
+- ✅ Custom prompt support for flexible AI explanations
+- ✅ Conditional logging with VERBOSE_LOGGING environment variable
 - I can convert the synchronous generator into a job queue and make `/api/generate` return immediately with `202` plus a polling-friendly status endpoint.
-- I can add SSE/WebSocket-based progress events to show generation progress to the frontend.
 
 If you'd like either of those, tell me which approach you prefer and I will implement it.
 
@@ -269,11 +283,12 @@ const resp = await fetch("http://localhost:3001/api/generate", {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ 
     script: "console.log('hello')", 
-    title: "Demo",
-    walletAddress: "your-wallet-address"
+    walletAddress: "your-wallet-address",
+    prompt: "Explain what this code does" // optional
   }),
 });
-const { jobId } = await resp.json();
+const { jobId, title } = await resp.json();
+console.log("Generated title:", title);
 
 // Connect to WebSocket for real-time updates
 const ws = new WebSocket('ws://localhost:3001');
@@ -322,6 +337,7 @@ pollStatus();
 
 - `.env` at project root should include:
   - `OPENAI_API_KEY` — required for TTS and code analysis.
+  - `VERBOSE_LOGGING` — set to `true` to enable detailed console logging (default: `true`).
 
 **Important runtime details**
 

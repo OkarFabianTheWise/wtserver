@@ -1,7 +1,7 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import crypto from 'crypto';
-import { generateNarrativeStoryboard } from '../codeAnalyzer.js';
+import { generateNarrativeStoryboard, generateTitle } from '../codeAnalyzer.js';
 import { generateSpeechBuffer } from '../textToSpeech.js';
 import { generateNarrativeVideoBuffer } from '../narrativeAnimationGenerator.js';
 import { createVideoJob, updateJobStatus, storeVideo, deductUserPoints } from '../db.js';
@@ -139,7 +139,7 @@ const generateNarrativeHandler = async (req: Request, res: Response): Promise<vo
   let jobId: string | null = null;
 
   try {
-    const { walletAddress, script, title } = req.body;
+    const { walletAddress, script, prompt } = req.body;
 
     if (!script || typeof script !== 'string' || script.trim() === '') {
       res.status(400).json({ error: 'Missing script in request body' });
@@ -151,7 +151,7 @@ const generateNarrativeHandler = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    console.log('weaveit-generator: Processing narrative animation request:', { title, walletAddress });
+    if (VERBOSE_LOGGING) console.log('weaveit-generator: Processing narrative animation request:', { walletAddress, scriptLength: script.length, hasPrompt: !!prompt });
 
     // Check credit balance (narrative video costs 3 credits - more than simple video)
     const NARRATIVE_COST = 3;
@@ -165,9 +165,13 @@ const generateNarrativeHandler = async (req: Request, res: Response): Promise<vo
       return;
     }
 
+    // Generate title automatically based on script content
+    const title = await generateTitle(script);
+    if (VERBOSE_LOGGING) console.log('Generated title:', title);
+
     // Create job in database with job_type = 'narrative'
     jobId = await createVideoJob(walletAddress, script, title, 'narrative');
-    console.log('Created narrative job:', jobId);
+    if (VERBOSE_LOGGING) console.log('Created narrative job:', jobId);
 
     // Update status to generating
     await updateJobStatus(jobId, 'generating');
@@ -176,6 +180,7 @@ const generateNarrativeHandler = async (req: Request, res: Response): Promise<vo
     res.json({
       jobId,
       status: 'generating',
+      title,
       creditsDeducted: NARRATIVE_COST,
       remainingCredits: newBalance,
       message: 'Narrative video generation started. Check status via polling or webhook.',
@@ -187,7 +192,7 @@ const generateNarrativeHandler = async (req: Request, res: Response): Promise<vo
     });
 
   } catch (error) {
-    console.error('weaveit-generator: Narrative video generation setup error:', error);
+    if (VERBOSE_LOGGING) console.error('weaveit-generator: Narrative video generation setup error:', error);
 
     // Update job status to failed if we have a jobId
     if (jobId) {

@@ -3,7 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import crypto from 'crypto';
-import WebSocket from 'ws';
+import { WebSocketServer } from 'ws';
 import http from 'http';
 import videosStatusRoute from './weaveit-generator/videosStatusRoute.js';
 import generateRoute from './weaveit-generator/generateRoute.js';
@@ -19,7 +19,7 @@ const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 3001;
 // WebSocket server
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocketServer({ server });
 wss.on('connection', (ws, request) => {
     wsManager.handleConnection(ws, request);
 });
@@ -232,15 +232,13 @@ app.post('/api/webhooks/job-update', async (req, res) => {
         // Broadcast to SSE clients (including progress updates)
         broadcastJobUpdate(jobId, { status, videoId, audioId, duration, sceneCount, error, progress, step });
         // Log completion details
-        if (status === 'completed') {
-            console.log(`✅ Job ${jobId} completed successfully. Video ID: ${videoId}, Audio ID: ${audioId}, Duration: ${duration}s`);
-        }
-        else if (status === 'failed') {
-            console.log(`❌ Job ${jobId} failed: ${error}`);
-        }
-        else if (status === 'progress') {
-            console.log(`📊 Job ${jobId} progress: ${progress}% - ${step || 'processing'}`);
-        }
+        // if (status === 'completed') {
+        //   console.log(`✅ Job ${jobId} completed successfully. Video ID: ${videoId}, Audio ID: ${audioId}, Duration: ${duration}s`);
+        // } else if (status === 'failed') {
+        //   console.log(`❌ Job ${jobId} failed: ${error}`);
+        // } else if (status === 'progress') {
+        //   console.log(`📊 Job ${jobId} progress: ${progress}% - ${step || 'processing'}`);
+        // }
         res.json({ received: true });
     }
     catch (err) {

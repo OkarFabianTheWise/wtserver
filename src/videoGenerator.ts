@@ -42,7 +42,7 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   for (const word of words) {
     const testLine = line + (line ? ' ' : '') + word;
     const width = ctx.measureText(testLine).width;
-    
+
     if (width > maxWidth && line !== '') {
       lines.push(line);
       line = word;
@@ -54,7 +54,7 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   if (line) {
     lines.push(line);
   }
-  
+
   return lines;
 }
 
@@ -93,7 +93,7 @@ async function generateSlides(script: string, outputDir: string): Promise<{ slid
     let fontSize = 28;
     let lineHeight = fontSize * 1.3;
     let maxLines = Math.floor(availableHeight / lineHeight);
-    
+
     // If not enough space, calculate directly instead of looping
     if (maxLines < 8) {
       fontSize = Math.floor((availableHeight / 8) / 1.3);
@@ -103,18 +103,18 @@ async function generateSlides(script: string, outputDir: string): Promise<{ slid
     }
 
     ctx.font = `${fontSize}px Arial, sans-serif`;
-    
+
     // Fill the slide with as much text as possible
     const lines: string[] = [];
     let currentLine = '';
     let wordIndex = 0;
-    
+
     // Pack text into lines, filling each line completely
     while (wordIndex < words.length && lines.length < maxLines) {
       const word = words[wordIndex];
       const testLine = currentLine + (currentLine ? ' ' : '') + word;
       const textWidth = ctx.measureText(testLine).width;
-      
+
       if (textWidth <= availableWidth) {
         currentLine = testLine;
         wordIndex++;
@@ -131,7 +131,7 @@ async function generateSlides(script: string, outputDir: string): Promise<{ slid
         }
       }
     }
-    
+
     // Add the last line if it has content
     if (currentLine && lines.length < maxLines) {
       lines.push(currentLine);
@@ -146,7 +146,7 @@ async function generateSlides(script: string, outputDir: string): Promise<{ slid
     ctx.font = `${fontSize}px Arial, sans-serif`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    
+
     lines.forEach((line, lineIndex) => {
       const y = paddingY + (lineIndex * lineHeight);
       ctx.fillText(line, paddingX, y);
@@ -161,10 +161,10 @@ async function generateSlides(script: string, outputDir: string): Promise<{ slid
     // Store slide text and calculate weight
     const slideText = lines.join(' ');
     allSlides.push(slideText);
-    
+
     const wordCount = slideText.split(' ').length;
-    console.log(`✅ Created slide ${currentSlideIndex + 1} (${wordCount} words, ${fontSize}px font, ${lines.length} lines filled): "${slideText.substring(0, 60)}..."`);
-    
+    // console.log(`✅ Created slide ${currentSlideIndex + 1} (${wordCount} words, ${fontSize}px font, ${lines.length} lines filled): "${slideText.substring(0, 60)}..."`);
+
     currentSlideIndex++;
   }
 
@@ -172,15 +172,15 @@ async function generateSlides(script: string, outputDir: string): Promise<{ slid
   const totalWords = allSlides.reduce((sum, slide) => sum + slide.split(' ').length, 0);
   allWeights = allSlides.map(slide => slide.split(' ').length / totalWords);
 
-  console.log(`📝 Generated ${allSlides.length} slides, all properly filled with text`);
-  
+  // console.log(`📝 Generated ${allSlides.length} slides, all properly filled with text`);
+
   return { slides: slidePaths, weights: allWeights };
 }
 
 function createSlideVideo(slidePath: string, outputPath: string, duration: number): Promise<void> {
   return new Promise((resolve, reject) => {
-    console.log(`🎬 Creating video clip: ${path.basename(outputPath)} (${duration.toFixed(3)}s)`);
-    
+    // console.log(`🎬 Creating video clip: ${path.basename(outputPath)} (${duration.toFixed(3)}s)`);
+
     ffmpeg(slidePath)
       .inputOptions([
         '-loop 1',
@@ -198,7 +198,7 @@ function createSlideVideo(slidePath: string, outputPath: string, duration: numbe
       ])
       .output(outputPath)
       .on('end', () => {
-        console.log(`✅ Video clip created: ${path.basename(outputPath)} (${duration.toFixed(3)}s)`);
+        // console.log(`✅ Video clip created: ${path.basename(outputPath)} (${duration.toFixed(3)}s)`);
         resolve();
       })
       .on('error', (err) => {
@@ -215,7 +215,7 @@ function createSlideVideo(slidePath: string, outputPath: string, duration: numbe
 function concatSlideVideos(videoPaths: string[], outputPath: string): Promise<void> {
   const videoDir = path.dirname(videoPaths[0]);
   const concatListPath = path.join(videoDir, 'file_list.txt');
-  
+
   // Use relative paths for concat (more reliable)
   const fileList = videoPaths.map(p => `file '${path.basename(p)}'`).join('\n');
   fs.writeFileSync(concatListPath, fileList);
@@ -243,7 +243,7 @@ function concatSlideVideos(videoPaths: string[], outputPath: string): Promise<vo
         }
       })
       .on('end', () => {
-        console.log(`✅ Video concatenation completed: ${path.basename(outputPath)}`);
+        // console.log(`✅ Video concatenation completed: ${path.basename(outputPath)}`);
         // Clean up the file list
         if (fs.existsSync(concatListPath)) {
           fs.unlinkSync(concatListPath);
@@ -268,7 +268,7 @@ function concatSlideVideos(videoPaths: string[], outputPath: string): Promise<vo
 function mergeWithAudio(videoPath: string, audioPath: string, outputPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     console.log(`🎵 Merging video with audio with proper sync...`);
-    
+
     // First, get both durations to ensure they match
     Promise.all([
       getVideoDuration(videoPath),
@@ -276,7 +276,7 @@ function mergeWithAudio(videoPath: string, audioPath: string, outputPath: string
     ]).then(([videoDuration, audioDuration]) => {
       console.log(`📹 Video duration: ${videoDuration.toFixed(3)}s`);
       console.log(`🎵 Audio duration: ${audioDuration.toFixed(3)}s`);
-      
+
       ffmpeg()
         .addInput(videoPath)
         .inputOptions(['-itsoffset', '0.1']) // Apply offset to video input
@@ -343,7 +343,7 @@ export async function generateVideo(tutorialText: string, audioPath: string, fin
 
   try {
     console.log('🚀 Starting video generation...');
-    
+
     // Copy audio file
     fs.copyFileSync(audioPath, ttsPath);
     console.log('📋 Audio file copied');
@@ -363,19 +363,20 @@ export async function generateVideo(tutorialText: string, audioPath: string, fin
       const bufferedDuration = baseDuration * 1.3;
       return bufferedDuration;
     });
-    
+
     // Since we added buffers, we need to normalize to fit actual audio duration
     const totalBufferedDuration = slideDurations.reduce((sum, duration) => sum + duration, 0);
     const scaleFactor = actualAudioDuration / totalBufferedDuration;
     const finalSlideDurations = slideDurations.map(duration => duration * scaleFactor);
-    
+
     // Verify total duration matches
-    const totalCalculatedDuration = finalSlideDurations.reduce((sum, duration) => sum + duration, 0);
-    console.log(`🧮 Calculated total duration: ${totalCalculatedDuration.toFixed(3)}s`);
-    console.log(`🎵 Actual audio duration: ${actualAudioDuration.toFixed(3)}s`);
-    console.log(`📏 Duration difference: ${Math.abs(totalCalculatedDuration - actualAudioDuration).toFixed(3)}s`);
-    
-    console.log('⏱️  Slide durations (with 30% buffer):');
+    // const totalCalculatedDuration = finalSlideDurations.reduce((sum, duration) => sum + duration, 0);
+    // console.log(`🧮 Calculated total duration: ${totalCalculatedDuration.toFixed(3)}s`);
+    // console.log(`🎵 Actual audio duration: ${actualAudioDuration.toFixed(3)}s`);
+    // console.log(`📏 Duration difference: ${Math.abs(totalCalculatedDuration - actualAudioDuration).toFixed(3)}s`);
+
+    // console.log('⏱️  Slide durations (with 30% buffer):');
+
     finalSlideDurations.forEach((duration, i) => {
       console.log(`   Slide ${i + 1}: ${duration.toFixed(3)}s (${(weights[i] * 100).toFixed(1)}% base + buffer)`);
     });
@@ -417,9 +418,9 @@ export async function generateVideo(tutorialText: string, audioPath: string, fin
     await concatSlideVideos(videoClips, concatVideoPath);
 
     // Verify concatenated video duration
-    const finalVideoDuration = await getVideoDuration(concatVideoPath);
-    console.log(`📹 Final video duration: ${finalVideoDuration.toFixed(3)}s`);
-    
+    // const finalVideoDuration = await getVideoDuration(concatVideoPath);
+    // console.log(`📹 Final video duration: ${finalVideoDuration.toFixed(3)}s`);
+
     // Merge with audio
     await mergeWithAudio(concatVideoPath, ttsPath, finalOutputPath);
     console.log(`✅ Final tutorial video saved to: ${finalOutputPath}`);
@@ -441,13 +442,13 @@ export async function generateVideo(tutorialText: string, audioPath: string, fin
     if (fs.existsSync(tempClipsDir)) {
       fs.rmdirSync(tempClipsDir);
     }
-    
-    console.log('🧹 Cleaned up temporary files.');
-    console.log('🎉 Video generation completed successfully!');
+
+    // console.log('🧹 Cleaned up temporary files.');
+    // console.log('🎉 Video generation completed successfully!');
 
   } catch (err) {
     console.error('❌ Error generating video:', err);
-    
+
     // Cleanup on error
     try {
       if (fs.existsSync(tempClipsDir)) {
@@ -459,7 +460,7 @@ export async function generateVideo(tutorialText: string, audioPath: string, fin
     } catch (cleanupErr) {
       console.error('Error during cleanup:', cleanupErr);
     }
-    
+
     throw err;
   }
 }
@@ -527,7 +528,7 @@ export async function generateScrollingScriptVideo(script: string, audioPath: st
   const lineHeight = fontSize * lineSpacing;
   const totalHeight = wrappedLines.length * lineHeight + 2 * paddingY + height;
 
-  console.log(`📝 Processed ${paragraphs.length} paragraphs, ${sections.length} sections, ${wrappedLines.length} lines, total height: ${totalHeight}px`);
+  // console.log(`📝 Processed ${paragraphs.length} paragraphs, ${sections.length} sections, ${wrappedLines.length} lines, total height: ${totalHeight}px`);
 
   // Create tall canvas
   const canvas = createCanvas(width, totalHeight);
@@ -543,7 +544,7 @@ export async function generateScrollingScriptVideo(script: string, audioPath: st
 
   const tallImagePath = outputPath.replace(/\.mp4$/, '_scroll.png');
   fs.writeFileSync(tallImagePath, canvas.toBuffer('image/png'));
-  
+
   // Validate tall image
   const imageStats = fs.statSync(tallImagePath);
   console.log(`🖼️  Tall image created: ${imageStats.size} bytes, ${width}x${totalHeight}px`);
@@ -552,14 +553,14 @@ export async function generateScrollingScriptVideo(script: string, audioPath: st
   }
 
   const duration = await getAudioDuration(audioPath);
-  console.log(`🎵 Audio duration for scrolling: ${duration.toFixed(3)}s`);
+  // console.log(`🎵 Audio duration for scrolling: ${duration.toFixed(3)}s`);
 
   // Create scrolling video from tall image
   const tempVideoPath = outputPath.replace(/\.mp4$/, '_video.mp4');
 
   // Simple scrolling expression (linear)
   const scrollExpression = `${paddingY}+(t/${duration})*(${totalHeight - height - paddingY})`;
-  console.log(`📜 Scroll expression: ${scrollExpression}`);
+  // console.log(`📜 Scroll expression: ${scrollExpression}`);
 
   await new Promise<void>((resolve, reject) => {
     ffmpeg(tallImagePath)
@@ -568,7 +569,7 @@ export async function generateScrollingScriptVideo(script: string, audioPath: st
       .outputOptions(['-c:v libx264', '-pix_fmt yuv420p', '-preset ultrafast', '-r 15', `-t ${duration + 0.1}`, '-crf 24', '-y'])
       .save(tempVideoPath)
       .on("end", () => {
-        console.log(`✅ Temp scroll video created: ${tempVideoPath}`);
+        // console.log(`✅ Temp scroll video created: ${tempVideoPath}`);
         resolve();
       })
       .on('error', (err) => {
@@ -580,7 +581,7 @@ export async function generateScrollingScriptVideo(script: string, audioPath: st
   // Validate temp video (don't throw on failure, just warn)
   try {
     const tempVideoDuration = await getVideoDuration(tempVideoPath);
-    console.log(`📹 Temp video duration: ${tempVideoDuration.toFixed(3)}s (expected: ${duration.toFixed(3)}s)`);
+    // console.log(`📹 Temp video duration: ${tempVideoDuration.toFixed(3)}s (expected: ${duration.toFixed(3)}s)`);
   } catch (err) {
     console.error('❌ Temp video validation failed:', err);
   }
@@ -601,7 +602,7 @@ export async function generateScrollingScriptVideo(script: string, audioPath: st
       ])
       .save(outputPath)
       .on("end", () => {
-        console.log(`✅ Final video merged with audio: ${outputPath}`);
+        // console.log(`✅ Final video merged with audio: ${outputPath}`);
         resolve();
       })
       .on('error', (err) => {
@@ -613,7 +614,7 @@ export async function generateScrollingScriptVideo(script: string, audioPath: st
   // Validate final video
   try {
     const finalVideoDuration = await getVideoDuration(outputPath);
-    console.log(`📹 Final video duration: ${finalVideoDuration.toFixed(3)}s`);
+    // console.log(`📹 Final video duration: ${finalVideoDuration.toFixed(3)}s`);
     if (finalVideoDuration < duration * 0.5) {
       throw new Error(`Final video too short: ${finalVideoDuration}s vs expected ${duration}s`);
     }
@@ -649,19 +650,19 @@ export async function generateScrollingScriptVideoBuffer(script: string, audioBu
     }
 
     const videoBuffer = fs.readFileSync(videoPath);
-    console.log(`📦 Video buffer created: ${videoBuffer.length} bytes`);
-    console.log(`📦 First 20 bytes: ${videoBuffer.slice(0, 20).toString('hex')}`);
-    console.log(`📦 Is MP4 header: ${videoBuffer.slice(4, 8).toString() === 'ftyp'}`);
-    
+    // console.log(`📦 Video buffer created: ${videoBuffer.length} bytes`);
+    // console.log(`📦 First 20 bytes: ${videoBuffer.slice(0, 20).toString('hex')}`);
+    // console.log(`📦 Is MP4 header: ${videoBuffer.slice(4, 8).toString() === 'ftyp'}`);
+
     if (videoBuffer.length < 1000) {
       throw new Error(`Video buffer too small: ${videoBuffer.length} bytes`);
     }
-    
+
     if (videoBuffer.slice(4, 8).toString() !== 'ftyp') {
       console.error('❌ Video buffer does not have MP4 header!');
       console.error('Full header:', videoBuffer.slice(0, 20).toString('hex'));
     }
-    
+
     return videoBuffer;
   } finally {
     // Cleanup temp files

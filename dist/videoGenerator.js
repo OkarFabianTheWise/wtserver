@@ -139,18 +139,18 @@ async function generateSlides(script, outputDir) {
         const slideText = lines.join(' ');
         allSlides.push(slideText);
         const wordCount = slideText.split(' ').length;
-        console.log(`✅ Created slide ${currentSlideIndex + 1} (${wordCount} words, ${fontSize}px font, ${lines.length} lines filled): "${slideText.substring(0, 60)}..."`);
+        // console.log(`✅ Created slide ${currentSlideIndex + 1} (${wordCount} words, ${fontSize}px font, ${lines.length} lines filled): "${slideText.substring(0, 60)}..."`);
         currentSlideIndex++;
     }
     // Calculate weights based on word count (more accurate than character count)
     const totalWords = allSlides.reduce((sum, slide) => sum + slide.split(' ').length, 0);
     allWeights = allSlides.map(slide => slide.split(' ').length / totalWords);
-    console.log(`📝 Generated ${allSlides.length} slides, all properly filled with text`);
+    // console.log(`📝 Generated ${allSlides.length} slides, all properly filled with text`);
     return { slides: slidePaths, weights: allWeights };
 }
 function createSlideVideo(slidePath, outputPath, duration) {
     return new Promise((resolve, reject) => {
-        console.log(`🎬 Creating video clip: ${path.basename(outputPath)} (${duration.toFixed(3)}s)`);
+        // console.log(`🎬 Creating video clip: ${path.basename(outputPath)} (${duration.toFixed(3)}s)`);
         ffmpeg(slidePath)
             .inputOptions([
             '-loop 1',
@@ -168,7 +168,7 @@ function createSlideVideo(slidePath, outputPath, duration) {
         ])
             .output(outputPath)
             .on('end', () => {
-            console.log(`✅ Video clip created: ${path.basename(outputPath)} (${duration.toFixed(3)}s)`);
+            // console.log(`✅ Video clip created: ${path.basename(outputPath)} (${duration.toFixed(3)}s)`);
             resolve();
         })
             .on('error', (err) => {
@@ -209,7 +209,7 @@ function concatSlideVideos(videoPaths, outputPath) {
             }
         })
             .on('end', () => {
-            console.log(`✅ Video concatenation completed: ${path.basename(outputPath)}`);
+            // console.log(`✅ Video concatenation completed: ${path.basename(outputPath)}`);
             // Clean up the file list
             if (fs.existsSync(concatListPath)) {
                 fs.unlinkSync(concatListPath);
@@ -323,11 +323,11 @@ export async function generateVideo(tutorialText, audioPath, finalOutputPath) {
         const scaleFactor = actualAudioDuration / totalBufferedDuration;
         const finalSlideDurations = slideDurations.map(duration => duration * scaleFactor);
         // Verify total duration matches
-        const totalCalculatedDuration = finalSlideDurations.reduce((sum, duration) => sum + duration, 0);
-        console.log(`🧮 Calculated total duration: ${totalCalculatedDuration.toFixed(3)}s`);
-        console.log(`🎵 Actual audio duration: ${actualAudioDuration.toFixed(3)}s`);
-        console.log(`📏 Duration difference: ${Math.abs(totalCalculatedDuration - actualAudioDuration).toFixed(3)}s`);
-        console.log('⏱️  Slide durations (with 30% buffer):');
+        // const totalCalculatedDuration = finalSlideDurations.reduce((sum, duration) => sum + duration, 0);
+        // console.log(`🧮 Calculated total duration: ${totalCalculatedDuration.toFixed(3)}s`);
+        // console.log(`🎵 Actual audio duration: ${actualAudioDuration.toFixed(3)}s`);
+        // console.log(`📏 Duration difference: ${Math.abs(totalCalculatedDuration - actualAudioDuration).toFixed(3)}s`);
+        // console.log('⏱️  Slide durations (with 30% buffer):');
         finalSlideDurations.forEach((duration, i) => {
             console.log(`   Slide ${i + 1}: ${duration.toFixed(3)}s (${(weights[i] * 100).toFixed(1)}% base + buffer)`);
         });
@@ -367,8 +367,8 @@ export async function generateVideo(tutorialText, audioPath, finalOutputPath) {
         const concatVideoPath = path.join(outputDir, 'combined.mp4');
         await concatSlideVideos(videoClips, concatVideoPath);
         // Verify concatenated video duration
-        const finalVideoDuration = await getVideoDuration(concatVideoPath);
-        console.log(`📹 Final video duration: ${finalVideoDuration.toFixed(3)}s`);
+        // const finalVideoDuration = await getVideoDuration(concatVideoPath);
+        // console.log(`📹 Final video duration: ${finalVideoDuration.toFixed(3)}s`);
         // Merge with audio
         await mergeWithAudio(concatVideoPath, ttsPath, finalOutputPath);
         console.log(`✅ Final tutorial video saved to: ${finalOutputPath}`);
@@ -387,8 +387,8 @@ export async function generateVideo(tutorialText, audioPath, finalOutputPath) {
         if (fs.existsSync(tempClipsDir)) {
             fs.rmdirSync(tempClipsDir);
         }
-        console.log('🧹 Cleaned up temporary files.');
-        console.log('🎉 Video generation completed successfully!');
+        // console.log('🧹 Cleaned up temporary files.');
+        // console.log('🎉 Video generation completed successfully!');
     }
     catch (err) {
         console.error('❌ Error generating video:', err);
@@ -477,7 +477,7 @@ export async function generateScrollingScriptVideo(script, audioPath, outputPath
     });
     const lineHeight = fontSize * lineSpacing;
     const totalHeight = wrappedLines.length * lineHeight + 2 * paddingY + height;
-    console.log(`📝 Processed ${paragraphs.length} paragraphs, ${sections.length} sections, ${wrappedLines.length} lines, total height: ${totalHeight}px`);
+    // console.log(`📝 Processed ${paragraphs.length} paragraphs, ${sections.length} sections, ${wrappedLines.length} lines, total height: ${totalHeight}px`);
     // Create tall canvas
     const canvas = createCanvas(width, totalHeight);
     const scrollCtx = canvas.getContext('2d');
@@ -499,12 +499,12 @@ export async function generateScrollingScriptVideo(script, audioPath, outputPath
         throw new Error(`Tall image too small: ${imageStats.size} bytes`);
     }
     const duration = await getAudioDuration(audioPath);
-    console.log(`🎵 Audio duration for scrolling: ${duration.toFixed(3)}s`);
+    // console.log(`🎵 Audio duration for scrolling: ${duration.toFixed(3)}s`);
     // Create scrolling video from tall image
     const tempVideoPath = outputPath.replace(/\.mp4$/, '_video.mp4');
     // Simple scrolling expression (linear)
     const scrollExpression = `${paddingY}+(t/${duration})*(${totalHeight - height - paddingY})`;
-    console.log(`📜 Scroll expression: ${scrollExpression}`);
+    // console.log(`📜 Scroll expression: ${scrollExpression}`);
     await new Promise((resolve, reject) => {
         ffmpeg(tallImagePath)
             .inputOptions(['-framerate 15', '-loop 1'])
@@ -512,7 +512,7 @@ export async function generateScrollingScriptVideo(script, audioPath, outputPath
             .outputOptions(['-c:v libx264', '-pix_fmt yuv420p', '-preset ultrafast', '-r 15', `-t ${duration + 0.1}`, '-crf 24', '-y'])
             .save(tempVideoPath)
             .on("end", () => {
-            console.log(`✅ Temp scroll video created: ${tempVideoPath}`);
+            // console.log(`✅ Temp scroll video created: ${tempVideoPath}`);
             resolve();
         })
             .on('error', (err) => {
@@ -523,7 +523,7 @@ export async function generateScrollingScriptVideo(script, audioPath, outputPath
     // Validate temp video (don't throw on failure, just warn)
     try {
         const tempVideoDuration = await getVideoDuration(tempVideoPath);
-        console.log(`📹 Temp video duration: ${tempVideoDuration.toFixed(3)}s (expected: ${duration.toFixed(3)}s)`);
+        // console.log(`📹 Temp video duration: ${tempVideoDuration.toFixed(3)}s (expected: ${duration.toFixed(3)}s)`);
     }
     catch (err) {
         console.error('❌ Temp video validation failed:', err);
@@ -544,7 +544,7 @@ export async function generateScrollingScriptVideo(script, audioPath, outputPath
         ])
             .save(outputPath)
             .on("end", () => {
-            console.log(`✅ Final video merged with audio: ${outputPath}`);
+            // console.log(`✅ Final video merged with audio: ${outputPath}`);
             resolve();
         })
             .on('error', (err) => {
@@ -555,7 +555,7 @@ export async function generateScrollingScriptVideo(script, audioPath, outputPath
     // Validate final video
     try {
         const finalVideoDuration = await getVideoDuration(outputPath);
-        console.log(`📹 Final video duration: ${finalVideoDuration.toFixed(3)}s`);
+        // console.log(`📹 Final video duration: ${finalVideoDuration.toFixed(3)}s`);
         if (finalVideoDuration < duration * 0.5) {
             throw new Error(`Final video too short: ${finalVideoDuration}s vs expected ${duration}s`);
         }
@@ -586,9 +586,9 @@ export async function generateScrollingScriptVideoBuffer(script, audioBuffer) {
             throw new Error(`Video file too small: ${stats.size} bytes`);
         }
         const videoBuffer = fs.readFileSync(videoPath);
-        console.log(`📦 Video buffer created: ${videoBuffer.length} bytes`);
-        console.log(`📦 First 20 bytes: ${videoBuffer.slice(0, 20).toString('hex')}`);
-        console.log(`📦 Is MP4 header: ${videoBuffer.slice(4, 8).toString() === 'ftyp'}`);
+        // console.log(`📦 Video buffer created: ${videoBuffer.length} bytes`);
+        // console.log(`📦 First 20 bytes: ${videoBuffer.slice(0, 20).toString('hex')}`);
+        // console.log(`📦 Is MP4 header: ${videoBuffer.slice(4, 8).toString() === 'ftyp'}`);
         if (videoBuffer.length < 1000) {
             throw new Error(`Video buffer too small: ${videoBuffer.length} bytes`);
         }
