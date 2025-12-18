@@ -9,7 +9,7 @@ import videosStatusRoute from './weaveit-generator/videosStatusRoute.js';
 import generateRoute from './weaveit-generator/generateRoute.js';
 import generateAudioRoute from './weaveit-generator/generateAudioRoute.js';
 import generateNarrativeRoute from './weaveit-generator/generateNarrativeRoute.js';
-import pool, { testConnection, getVideoByJobId, getVideoByVideoId, getVideosByWallet, getAudioByJobId, getAudioByAudioId, getContentByWallet, getUserInfo, getCompletedJobsCount, getTotalDurationSecondsForWallet, getTotalUsersCount, getTotalVideosCreated, getTotalFailedJobs, updateJobStatus, storeVideo } from './db.js';
+import pool, { testConnection, getVideoByJobId, getVideoByVideoId, getVideosByWallet, getAudioByJobId, getAudioByAudioId, getContentByWallet, getUserInfo, getCompletedJobsCount, getTotalDurationSecondsForWallet, getTotalUsersCount, getTotalVideosCreated, getTotalFailedJobs, updateJobStatus, storeVideo, ensureUser } from './db.js';
 import paymentsRoute from './paymentsRoute.js';
 import usersRoute from './usersRoute.js';
 import { wsManager } from './websocket.js';
@@ -98,6 +98,9 @@ app.get('/api/wallet/:walletAddress/videos', async (req, res) => {
   try {
     const { walletAddress } = req.params;
 
+    // Ensure user exists and has free credits if new
+    await ensureUser(walletAddress);
+
     const videos = await getVideosByWallet(walletAddress);
 
     res.json({
@@ -123,6 +126,9 @@ app.get('/api/wallet/:walletAddress/videos', async (req, res) => {
 app.get('/api/wallet/:walletAddress/content', async (req, res) => {
   try {
     const { walletAddress } = req.params;
+
+    // Ensure user exists and has free credits if new
+    await ensureUser(walletAddress);
 
     const content = await getContentByWallet(walletAddress);
 
