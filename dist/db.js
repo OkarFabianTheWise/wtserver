@@ -55,13 +55,25 @@ export async function ensureUser(walletAddress) {
     const exists = await pool.query('SELECT 1 FROM users WHERE wallet_address = $1', [walletAddress]);
     if (exists.rowCount === 0) {
         try {
-            await pool.query(`INSERT INTO users (wallet_address, prompt_points, trial_expires_at)
-         VALUES ($1, $2, NOW() + INTERVAL '7 days')`, [walletAddress, 28]);
+            await pool.query(`INSERT INTO users (wallet_address, prompt_points, trial_expires_at, last_daily_reset, daily_used, paid_points)
+         VALUES ($1, $2, NOW() + INTERVAL '7 days', NOW(), 0, 0)`, [walletAddress, 28]);
         }
         catch (err) {
-            // Fallback if `trial_expires_at` column doesn't exist or other schema differences
-            await pool.query(`INSERT INTO users (wallet_address, prompt_points)
-         VALUES ($1, $2)`, [walletAddress, 28]);
+            // Fallback if `trial_expires_at` or daily/paid columns don't exist
+            try {
+                await pool.query(`INSERT INTO users (wallet_address, prompt_points, trial_expires_at, paid_points)
+           VALUES ($1, $2, NOW() + INTERVAL '7 days', 0)`, [walletAddress, 28]);
+            }
+            catch (err2) {
+                try {
+                    await pool.query(`INSERT INTO users (wallet_address, prompt_points, trial_expires_at)
+             VALUES ($1, $2, NOW() + INTERVAL '7 days')`, [walletAddress, 28]);
+                }
+                catch (err3) {
+                    await pool.query(`INSERT INTO users (wallet_address, prompt_points)
+             VALUES ($1, $2)`, [walletAddress, 28]);
+                }
+            }
         }
     }
 }
@@ -72,26 +84,34 @@ export async function ensureUser(walletAddress) {
 // - Clear `trial_expires_at` after processing so it is not processed again.
 export async function expireTrialsForWallet(walletAddress, initialTrialCredits = 28) {
     try {
-        const result = await pool.query('SELECT trial_expires_at, prompt_points FROM users WHERE wallet_address = $1', [walletAddress]);
+        const result = await pool.query('SELECT trial_expires_at, prompt_points, paid_points FROM users WHERE wallet_address = $1', [walletAddress]);
         if (result.rowCount === 0)
             return null;
         const row = result.rows[0];
         const expiresAt = row.trial_expires_at || null;
-        const points = row.prompt_points || 0;
+        const freePoints = Number(row.prompt_points || 0);
+        const paidPoints = Number(row.paid_points || 0);
+        const totalPoints = freePoints + paidPoints;
         if (!expiresAt)
-            return points;
+            return totalPoints;
         const now = new Date();
         const expired = new Date(expiresAt) < now;
         if (!expired)
-            return points;
-        if (points <= initialTrialCredits) {
-            // Likely only trial credits remain — zero them
-            await pool.query('UPDATE users SET prompt_points = 0, trial_expires_at = NULL WHERE wallet_address = $1', [walletAddress]);
-            return 0;
+            return totalPoints;
+        // Only remove up to the original trial grant (e.g. 28 points).
+        // This clears the trial marker and subtracts at most initialTrialCredits
+        // from the user's free prompt_points (never touch paid_points).
+        const amountToClear = Math.min(initialTrialCredits, freePoints);
+        if (amountToClear > 0) {
+            await pool.query(`UPDATE users 
+         SET prompt_points = GREATEST(COALESCE(prompt_points, 0) - $1, 0), 
+             trial_expires_at = NULL 
+         WHERE wallet_address = $2`, [amountToClear, walletAddress]);
+            return totalPoints - amountToClear;
         }
-        // User has more than initial trial credits — preserve their balance but clear the trial marker
+        // Nothing to subtract, just clear the trial marker
         await pool.query('UPDATE users SET trial_expires_at = NULL WHERE wallet_address = $1', [walletAddress]);
-        return points;
+        return totalPoints;
     }
     catch (err) {
         // If the column doesn't exist, ignore and return null so callers can continue safely
@@ -104,26 +124,35 @@ export async function expireTrialsForWallet(walletAddress, initialTrialCredits =
 // Get basic user info for frontend balance checks
 export async function getUserInfo(walletAddress) {
     try {
-        const result = await pool.query('SELECT prompt_points, trial_expires_at FROM users WHERE wallet_address = $1', [walletAddress]);
+        const result = await pool.query('SELECT prompt_points, paid_points, trial_expires_at FROM users WHERE wallet_address = $1', [walletAddress]);
         if (result.rowCount === 0)
             return null;
-        return { prompt_points: result.rows[0].prompt_points || 0, trial_expires_at: result.rows[0].trial_expires_at || null };
+        const row = result.rows[0];
+        return {
+            prompt_points: (row.prompt_points || 0) + (row.paid_points || 0),
+            trial_expires_at: row.trial_expires_at || null
+        };
     }
     catch (err) {
         // If trial_expires_at column missing, fall back to only prompt_points
         const m = String(err?.message || '').toLowerCase();
         if (m.includes('column') && m.includes('trial_expires_at')) {
-            const r2 = await pool.query('SELECT prompt_points FROM users WHERE wallet_address = $1', [walletAddress]);
+            const r2 = await pool.query('SELECT prompt_points, paid_points FROM users WHERE wallet_address = $1', [walletAddress]);
             if (r2.rowCount === 0)
                 return null;
-            return { prompt_points: r2.rows[0].prompt_points || 0, trial_expires_at: null };
+            const row2 = r2.rows[0];
+            return {
+                prompt_points: (row2.prompt_points || 0) + (row2.paid_points || 0),
+                trial_expires_at: null
+            };
         }
         throw err;
     }
 }
 export async function getUserPoints(walletAddress) {
-    const result = await pool.query('SELECT prompt_points FROM users WHERE wallet_address = $1', [walletAddress]);
-    return result.rows[0]?.prompt_points || 0;
+    const result = await pool.query('SELECT prompt_points, paid_points FROM users WHERE wallet_address = $1', [walletAddress]);
+    const row = result.rows[0];
+    return (row?.prompt_points || 0) + (row?.paid_points || 0);
 }
 // Job management
 export async function createVideoJob(walletAddress, scriptBody, title, jobType = 'video') {
@@ -257,22 +286,64 @@ export async function clearScriptBody(jobId) {
 }
 export default pool;
 // Award prompt points to a user (create user if necessary)
-export async function awardUserPoints(walletAddress, points) {
+export async function awardUserPoints(walletAddress, points, isPaid = false) {
     await ensureUser(walletAddress);
-    const result = await pool.query(`UPDATE users SET prompt_points = COALESCE(prompt_points, 0) + $1 WHERE wallet_address = $2 RETURNING prompt_points`, [points, walletAddress]);
-    return result.rows[0]?.prompt_points || 0;
+    const column = isPaid ? 'paid_points' : 'prompt_points';
+    const result = await pool.query(`UPDATE users SET ${column} = COALESCE(${column}, 0) + $1 WHERE wallet_address = $2 RETURNING prompt_points, paid_points`, [points, walletAddress]);
+    const row = result.rows[0];
+    return (row?.prompt_points || 0) + (row?.paid_points || 0);
+}
+// Reset daily usage if 24 hours have passed since last reset
+export async function resetDailyUsageIfNeeded(walletAddress) {
+    try {
+        await pool.query(`UPDATE users 
+       SET daily_used = 0, last_daily_reset = NOW()
+       WHERE wallet_address = $1 AND last_daily_reset < NOW() - INTERVAL '24 hours'`, [walletAddress]);
+    }
+    catch (err) {
+        // If columns don't exist, ignore (for backward compatibility)
+        const m = String(err?.message || '').toLowerCase();
+        if (m.includes('column') && (m.includes('last_daily_reset') || m.includes('daily_used'))) {
+            return;
+        }
+        throw err;
+    }
 }
 // Deduct prompt points atomically, checking balance first.
 // Returns new balance if successful, or null if insufficient credits.
+// Deducts from free points first, then paid points.
 export async function deductUserPoints(walletAddress, points) {
-    const result = await pool.query(`UPDATE users 
-     SET prompt_points = prompt_points - $1 
-     WHERE wallet_address = $2 AND prompt_points >= $1 
-     RETURNING prompt_points`, [points, walletAddress]);
-    if (result.rowCount === 0) {
-        return null; // insufficient credits
-    }
-    return result.rows[0]?.prompt_points || 0;
+    // First, ensure daily usage is reset if 24 hours have passed
+    await resetDailyUsageIfNeeded(walletAddress);
+    // Get current balances
+    const balanceResult = await pool.query('SELECT prompt_points, paid_points FROM users WHERE wallet_address = $1', [walletAddress]);
+    if (balanceResult.rowCount === 0)
+        return null;
+    const row = balanceResult.rows[0];
+    const freePoints = Number(row.prompt_points || 0);
+    const paidPoints = Number(row.paid_points || 0);
+    const totalPoints = freePoints + paidPoints;
+    if (totalPoints < points)
+        return null; // insufficient total credits
+    // Determine how much must be taken from free (trial) vs paid points
+    const deductFree = Math.min(points, freePoints);
+    const deductPaid = points - deductFree;
+    // Check daily limit ONLY for free (trial) points
+    const dailyResult = await pool.query('SELECT COALESCE(daily_used, 0) as daily_used FROM users WHERE wallet_address = $1', [walletAddress]);
+    const dailyUsed = Number(dailyResult.rows[0]?.daily_used || 0);
+    if (dailyUsed + deductFree > 4)
+        return null; // daily trial limit exceeded
+    // Perform atomic update: subtract free & paid appropriately, increment daily_used only by free deduction
+    const updateResult = await pool.query(`UPDATE users 
+     SET prompt_points = GREATEST(COALESCE(prompt_points, 0) - $1, 0), 
+         paid_points = GREATEST(COALESCE(paid_points, 0) - $2, 0),
+         daily_used = COALESCE(daily_used, 0) + $3
+     WHERE wallet_address = $4
+     RETURNING prompt_points, paid_points`, [deductFree, deductPaid, deductFree, walletAddress]);
+    if (updateResult.rowCount === 0)
+        return null;
+    const updatedRow = updateResult.rows[0];
+    return (Number(updatedRow.prompt_points || 0) + Number(updatedRow.paid_points || 0));
 }
 export async function saveScrollImage(jobId, imageBuffer) {
     if (!imageBuffer || imageBuffer.length === 0) {

@@ -1,5 +1,5 @@
 import express from 'express';
-import { getUserInfo, expireTrialsForWallet } from './db.js';
+import { getUserInfo, expireTrialsForWallet, ensureUser } from './db.js';
 const router = express.Router();
 // GET /api/users/:walletAddress/points
 // Returns { walletAddress, points, trial_expires_at }
@@ -8,6 +8,8 @@ router.get('/users/:walletAddress/points', async (req, res) => {
         const { walletAddress } = req.params;
         if (!walletAddress)
             return res.status(400).json({ error: 'walletAddress required' });
+        // Ensure user exists and has free credits if new
+        await ensureUser(walletAddress);
         // Ensure expired trials are processed before returning balance
         try {
             await expireTrialsForWallet(walletAddress);

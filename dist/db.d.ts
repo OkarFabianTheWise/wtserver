@@ -8,7 +8,7 @@ export declare function getUserInfo(walletAddress: string): Promise<{
     trial_expires_at: Date | null;
 } | null>;
 export declare function getUserPoints(walletAddress: string): Promise<number>;
-export declare function createVideoJob(walletAddress: string, scriptBody: string, title?: string, jobType?: 'video' | 'audio' | 'narrative'): Promise<string>;
+export declare function createVideoJob(walletAddress: string, scriptBody: string, title?: string, jobType?: 'video' | 'audio' | 'narrative' | 'animation'): Promise<string>;
 export declare function updateJobStatus(jobId: string, status: 'pending' | 'generating' | 'failed' | 'completed', errorMessage?: string): Promise<void>;
 export declare function getJobStatus(jobId: string): Promise<{
     status: string;
@@ -54,7 +54,8 @@ export declare function getAudioByAudioId(audioId: string): Promise<Buffer | nul
 export declare function cleanupOldJobs(daysOld?: number): Promise<number>;
 export declare function clearScriptBody(jobId: string): Promise<void>;
 export default pool;
-export declare function awardUserPoints(walletAddress: string, points: number): Promise<number>;
+export declare function awardUserPoints(walletAddress: string, points: number, isPaid?: boolean): Promise<number>;
+export declare function resetDailyUsageIfNeeded(walletAddress: string): Promise<void>;
 export declare function deductUserPoints(walletAddress: string, points: number): Promise<number | null>;
 export declare function saveScrollImage(jobId: string, imageBuffer: Buffer): Promise<string>;
 export declare function getScrollImageByJobId(jobId: string): Promise<Buffer | null>;

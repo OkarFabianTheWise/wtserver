@@ -184,7 +184,7 @@ export async function createVideoJob(
   walletAddress: string,
   scriptBody: string,
   title?: string,
-  jobType: 'video' | 'audio' | 'narrative' = 'video'
+  jobType: 'video' | 'audio' | 'narrative' | 'animation' = 'video'
 ): Promise<string> {
   await ensureUser(walletAddress);
   const result = await pool.query(
@@ -482,13 +482,13 @@ export async function deductUserPoints(walletAddress: string, points: number): P
   const deductFree = Math.min(points, freePoints);
   const deductPaid = points - deductFree;
 
-  // Check daily limit ONLY for free (trial) points
+  // Check daily limit ONLY for free (trial) points, but skip if user has paid points
   const dailyResult = await pool.query(
     'SELECT COALESCE(daily_used, 0) as daily_used FROM users WHERE wallet_address = $1',
     [walletAddress]
   );
   const dailyUsed = Number(dailyResult.rows[0]?.daily_used || 0);
-  if (dailyUsed + deductFree > 4) return null; // daily trial limit exceeded
+  if (paidPoints === 0 && dailyUsed + deductFree > 4) return null; // daily trial limit exceeded
 
   // Perform atomic update: subtract free & paid appropriately, increment daily_used only by free deduction
   const updateResult = await pool.query(

@@ -9,7 +9,8 @@ import videosStatusRoute from './weaveit-generator/videosStatusRoute.js';
 import generateRoute from './weaveit-generator/generateRoute.js';
 import generateAudioRoute from './weaveit-generator/generateAudioRoute.js';
 import generateNarrativeRoute from './weaveit-generator/generateNarrativeRoute.js';
-import pool, { testConnection, getVideoByJobId, getVideoByVideoId, getVideosByWallet, getAudioByJobId, getAudioByAudioId, getContentByWallet, getCompletedJobsCount, getTotalDurationSecondsForWallet, getTotalUsersCount, getTotalVideosCreated, getTotalFailedJobs, updateJobStatus, storeVideo } from './db.js';
+import generateAnimationRoute from './weaveit-generator/generateAnimationRoute.js';
+import pool, { testConnection, getVideoByJobId, getVideoByVideoId, getVideosByWallet, getAudioByJobId, getAudioByAudioId, getContentByWallet, getCompletedJobsCount, getTotalDurationSecondsForWallet, getTotalUsersCount, getTotalVideosCreated, getTotalFailedJobs, updateJobStatus, storeVideo, ensureUser } from './db.js';
 import paymentsRoute from './paymentsRoute.js';
 import usersRoute from './usersRoute.js';
 import { wsManager } from './websocket.js';
@@ -30,6 +31,7 @@ app.use('/api', videosStatusRoute);
 app.use('/api', generateRoute);
 app.use('/api', generateAudioRoute);
 app.use('/api', generateNarrativeRoute);
+app.use('/api', generateAnimationRoute);
 app.use('/api', paymentsRoute);
 app.use('/api', usersRoute);
 // Video serving endpoint - serves video data from database by job ID
@@ -83,6 +85,8 @@ app.get('/api/videos/:videoId', async (req, res) => {
 app.get('/api/wallet/:walletAddress/videos', async (req, res) => {
     try {
         const { walletAddress } = req.params;
+        // Ensure user exists and has free credits if new
+        await ensureUser(walletAddress);
         const videos = await getVideosByWallet(walletAddress);
         res.json({
             wallet_address: walletAddress,
@@ -107,6 +111,8 @@ app.get('/api/wallet/:walletAddress/videos', async (req, res) => {
 app.get('/api/wallet/:walletAddress/content', async (req, res) => {
     try {
         const { walletAddress } = req.params;
+        // Ensure user exists and has free credits if new
+        await ensureUser(walletAddress);
         const content = await getContentByWallet(walletAddress);
         res.json({
             wallet_address: walletAddress,

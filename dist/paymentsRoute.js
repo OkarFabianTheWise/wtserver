@@ -20,7 +20,7 @@ router.post('/payments/award', async (req, res) => {
         if (awardedPoints === undefined || Number.isNaN(awardedPoints)) {
             return res.status(400).json({ error: 'Provide valid `tier`, `amount`, or `points`' });
         }
-        const newTotal = await awardUserPoints(walletAddress, awardedPoints);
+        const newTotal = await awardUserPoints(walletAddress, awardedPoints, true);
         // Optionally compute equivalent content credits based on cost per content
         // NOTE: audio creation = 1 credit, video creation = 2 credits
         const costs = { audio: 1, video: 2 };
