@@ -1,3 +1,4 @@
+import { generateIllustrationVideoWithRemotion } from './remotionVideoGenerator.js';
 import ffmpeg from 'fluent-ffmpeg';
 import fs from 'fs';
 import path from 'path';
@@ -570,46 +571,7 @@ export async function generateScrollingScriptVideo(script, audioPath, outputPath
     console.log(`✅ Scrolling video created at ${outputPath}`);
 }
 export async function generateScrollingScriptVideoBuffer(script, audioBuffer) {
-    const tempDir = os.tmpdir();
-    const tempId = `scroll-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const audioPath = path.join(tempDir, `${tempId}.mp3`);
-    const videoPath = path.join(tempDir, `${tempId}.mp4`);
-    try {
-        fs.writeFileSync(audioPath, audioBuffer);
-        await generateScrollingScriptVideo(script, audioPath, videoPath);
-        // Validate the generated video file
-        if (!fs.existsSync(videoPath)) {
-            throw new Error('Video file was not created');
-        }
-        const stats = fs.statSync(videoPath);
-        if (stats.size < 1000) { // Less than 1KB is probably corrupted
-            throw new Error(`Video file too small: ${stats.size} bytes`);
-        }
-        const videoBuffer = fs.readFileSync(videoPath);
-        // console.log(`📦 Video buffer created: ${videoBuffer.length} bytes`);
-        // console.log(`📦 First 20 bytes: ${videoBuffer.slice(0, 20).toString('hex')}`);
-        // console.log(`📦 Is MP4 header: ${videoBuffer.slice(4, 8).toString() === 'ftyp'}`);
-        if (videoBuffer.length < 1000) {
-            throw new Error(`Video buffer too small: ${videoBuffer.length} bytes`);
-        }
-        if (videoBuffer.slice(4, 8).toString() !== 'ftyp') {
-            console.error('❌ Video buffer does not have MP4 header!');
-            console.error('Full header:', videoBuffer.slice(0, 20).toString('hex'));
-        }
-        return videoBuffer;
-    }
-    finally {
-        // Cleanup temp files
-        [audioPath, videoPath].forEach(f => {
-            if (fs.existsSync(f)) {
-                try {
-                    fs.unlinkSync(f);
-                }
-                catch (err) {
-                    console.error(`Error cleaning up ${f}:`, err);
-                }
-            }
-        });
-    }
+    console.log('🎬 Generating illustration video with Remotion...');
+    return await generateIllustrationVideoWithRemotion(script, audioBuffer);
 }
 //# sourceMappingURL=videoGenerator.js.map

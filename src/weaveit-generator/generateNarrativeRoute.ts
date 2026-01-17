@@ -53,7 +53,7 @@ async function sendWebhook(jobId: string, status: string, videoId?: string, dura
     if (!response.ok) {
       console.error(`Webhook failed: ${response.status} ${response.statusText}`);
     } else {
-      console.log(`✅ Webhook sent for job ${jobId}: ${status}`);
+      // console.log(`✅ Webhook sent for job ${jobId}: ${status}`);
     }
   } catch (err) {
     console.error('Error sending webhook:', err);
@@ -63,13 +63,13 @@ async function sendWebhook(jobId: string, status: string, videoId?: string, dura
 // Background processing function
 async function processNarrativeGeneration(jobId: string, walletAddress: string, script: string) {
   try {
-    if (VERBOSE_LOGGING) console.log(`🚀 Starting background processing for narrative job ${jobId}`);
+    // console.log(`🚀 Starting background processing for narrative job ${jobId}`);
 
     // Emit initial progress
     wsManager.emitProgress(jobId, 0, 'generating', 'Starting narrative generation...');
 
-    // Generate narrative storyboard scenes
-    if (VERBOSE_LOGGING) console.log('📖 Generating narrative storyboard...');
+    // Generate narrative storyboard
+    // console.log('📖 Generating narrative storyboard...');
     wsManager.emitProgress(jobId, 2, 'generating', 'Analyzing script for narrative...');
     wsManager.emitProgress(jobId, 5, 'generating', 'Creating narrative storyboard...');
     const scenes = await generateNarrativeStoryboard(script);
@@ -78,40 +78,40 @@ async function processNarrativeGeneration(jobId: string, walletAddress: string, 
       throw new Error('Failed to generate narrative scenes');
     }
 
-    if (VERBOSE_LOGGING) console.log(`✅ Generated ${scenes.length} narrative scenes`);
+    // console.log(`✅ Generated ${scenes.length} narrative scenes`);
     wsManager.emitProgress(jobId, 10, 'generating', `Generated ${scenes.length} narrative scenes`);
 
     // Calculate total narration duration from scenes
     const totalSceneDuration = scenes.reduce((sum, scene) => sum + (scene.duration || 3), 0);
-    if (VERBOSE_LOGGING) console.log(`📊 Total scene duration: ${totalSceneDuration}s`);
+    // console.log(`📊 Total scene duration: ${totalSceneDuration}s`);
 
     // Generate narration text by combining all scene narrations
     const narrationText = scenes.map((s) => s.narration).join(' ');
 
     // Generate speech from combined narration
-    if (VERBOSE_LOGGING) console.log('🎙️  Generating audio narration...');
+    // console.log('🎙️  Generating audio narration...');
     wsManager.emitProgress(jobId, 15, 'generating', 'Preparing audio generation...');
     wsManager.emitProgress(jobId, 20, 'generating', 'Generating audio narration...');
     const audioBuffer = await generateSpeechBuffer(narrationText);
-    if (VERBOSE_LOGGING) console.log(`Generated audio: ${audioBuffer.length} bytes`);
+    // console.log(`Generated audio: ${audioBuffer.length} bytes`);
     wsManager.emitProgress(jobId, 30, 'generating', 'Audio narration completed');
 
     // Generate narrative video buffer
-    if (VERBOSE_LOGGING) console.log('🎨 Generating narrative animation video...');
+    // console.log('🎨 Generating narrative animation video...');
     wsManager.emitProgress(jobId, 35, 'generating', 'Preparing animation...');
     wsManager.emitProgress(jobId, 40, 'generating', 'Creating narrative animation...');
     const videoBuffer = await generateNarrativeVideoBuffer(scenes, audioBuffer);
-    if (VERBOSE_LOGGING) console.log(`Generated narrative video: ${videoBuffer.length} bytes`);
+    // console.log(`Generated narrative video: ${videoBuffer.length} bytes`);
     wsManager.emitProgress(jobId, 60, 'generating', 'Narrative animation completed');
 
     // Calculate duration from audio buffer
     const durationSec = estimateAudioDuration(audioBuffer);
-    if (VERBOSE_LOGGING) console.log(`⏱️  Estimated duration: ${durationSec} seconds`);
+    // console.log(`⏱️  Estimated duration: ${durationSec} seconds`);
     wsManager.emitProgress(jobId, 65, 'generating', 'Calculating video duration...');
 
     // Store video in database
     const videoId = await storeVideo(jobId, walletAddress, videoBuffer, durationSec);
-    if (VERBOSE_LOGGING) console.log('Stored narrative video in database:', videoId);
+    // console.log('Stored narrative video in database:', videoId);
     wsManager.emitProgress(jobId, 70, 'generating', 'Storing video in database...');
 
     // Update job status to completed
@@ -151,7 +151,7 @@ const generateNarrativeHandler = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    if (VERBOSE_LOGGING) console.log('weaveit-generator: Processing narrative animation request:', { walletAddress, scriptLength: script.length, hasPrompt: !!prompt });
+    // console.log('weaveit-generator: Processing narrative animation request:', { walletAddress, scriptLength: script.length, hasPrompt: !!prompt });
 
     // Check credit balance (narrative video costs 3 credits - more than simple video)
     const NARRATIVE_COST = 3;
@@ -167,11 +167,11 @@ const generateNarrativeHandler = async (req: Request, res: Response): Promise<vo
 
     // Generate title automatically based on script content
     const title = await generateTitle(script);
-    if (VERBOSE_LOGGING) console.log('Generated title:', title);
+    // console.log('Generated title:', title);
 
     // Create job in database with job_type = 'narrative'
     jobId = await createVideoJob(walletAddress, script, title, 'narrative');
-    if (VERBOSE_LOGGING) console.log('Created narrative job:', jobId);
+    // console.log('Created narrative job:', jobId);
 
     // Update status to generating
     await updateJobStatus(jobId, 'generating');

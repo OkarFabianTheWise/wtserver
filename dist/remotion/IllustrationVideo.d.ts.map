@@ -1,0 +1,1 @@
+{"version":3,"file":"IllustrationVideo.d.ts","sourceRoot":"","sources":["../../src/remotion/IllustrationVideo.tsx"],"names":[],"mappings":"AAAA,OAAO,KAAK,MAAM,OAAO,CAAC;AAE1B,OAAO,KAAK,EAAE,eAAe,EAA6B,MAAM,aAAa,CAAC;AAE9E,UAAU,sBAAuB,SAAQ,MAAM,CAAC,MAAM,EAAE,OAAO,CAAC;IAC9D,eAAe,EAAE,eAAe,CAAC;CAClC;AAED,eAAO,MAAM,iBAAiB,EAAE,KAAK,CAAC,EAAE,CAAC,sBAAsB,CAyB9D,CAAC"}

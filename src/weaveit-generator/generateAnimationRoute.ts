@@ -1,9 +1,15 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import crypto from 'crypto';
-import { VideoRecorder } from '../recorder.js';
+import { generateIllustrationVideoWithRemotion } from '../remotionVideoGenerator.js';
 import { createVideoJob, updateJobStatus, storeVideo, deductUserPoints } from '../db.js';
 import { wsManager } from '../websocket.js';
+import { generateSpeechBuffer } from '../textToSpeech.js';
+import ffmpeg from 'fluent-ffmpeg';
+import fs from 'fs';
+import path from 'path';
+import OpenAI from 'openai';
+import { generateAnimationScript } from '../animationScriptGenerator.js';
 
 const router = express.Router();
 
@@ -11,6 +17,33 @@ const router = express.Router();
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || 'default-webhook-secret';
 const WEBHOOK_URL = process.env.WEBHOOK_URL || 'http://localhost:3001/api/webhooks/job-update';
 const VERBOSE_LOGGING = process.env.VERBOSE_LOGGING === 'true';
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// Function to generate metaphorical explanation using OpenAI
+async function generateExplanation(code: string): Promise<string> {
+    const prompt = `Explain this code snippet using real-life scenarios and analogies, like sand, wind, market scenes, school scenes, etc. Make it engaging and illustrative for a 2D animation. Don't just read the code, explain what it does metaphorically.
+
+Code:
+${code}
+
+Provide a narrative explanation suitable for voice over and animation, around 100-200 words. Focus on creating vivid scenes that can be visualized.`;
+
+    const response = await openai.chat.completions.create({
+        model: 'gpt-4',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 300,
+    });
+
+    return response.choices[0].message.content?.trim() || 'Explanation not available.';
+}
+
+// Function to generate animation script using AI
+async function generateAnimationScriptForCode(code: string): Promise<any> {
+    const explanation = await generateExplanation(code);
+    // Use the explanation as the article for the animation script
+    return await generateAnimationScript(explanation);
+}
 
 // Helper function to estimate duration (fixed for animation)
 function estimateDuration(script: string): number {
@@ -49,7 +82,7 @@ async function sendWebhook(jobId: string, status: string, videoId?: string, dura
         if (!response.ok) {
             console.error(`Webhook failed: ${response.status} ${response.statusText}`);
         } else {
-            console.log(`✅ Webhook sent for job ${jobId}: ${status}`);
+            // console.log(`✅ Webhook sent for job ${jobId}: ${status}`);
         }
     } catch (err) {
         console.error('Error sending webhook:', err);
@@ -58,35 +91,37 @@ async function sendWebhook(jobId: string, status: string, videoId?: string, dura
 
 // Background processing function
 async function processAnimationGeneration(jobId: string, walletAddress: string, script: string) {
-    const recorder = new VideoRecorder();
     try {
-        if (VERBOSE_LOGGING) console.log(`🚀 Starting background processing for animation job ${jobId}`);
+        // console.log(`🚀 Starting background processing for animation job ${jobId}`);
 
         // Emit initial progress
         wsManager.emitProgress(jobId, 0, 'generating', 'Starting animation generation...');
 
-        // Initialize recorder
-        wsManager.emitProgress(jobId, 5, 'generating', 'Initializing video recorder...');
-        await recorder.initialize();
+        // Generate animation script
+        wsManager.emitProgress(jobId, 8, 'generating', 'Generating animation script...');
+        const animationScript = await generateAnimationScriptForCode(script);
+        // console.log(`Generated animation script:`, animationScript);
+        wsManager.emitProgress(jobId, 10, 'generating', 'Animation script generated');
 
-        // Estimate duration
-        const duration = estimateDuration(script);
-        if (VERBOSE_LOGGING) console.log(`📊 Estimated duration: ${duration}ms`);
+        // Generate voice over audio
+        wsManager.emitProgress(jobId, 15, 'generating', 'Generating voice over...');
+        const audioBuffer = await generateSpeechBuffer(animationScript.voiceover.text);
+        // console.log(`Generated voice over audio: ${audioBuffer.length} bytes`);
+        wsManager.emitProgress(jobId, 40, 'generating', 'Voice over generated');
 
-        // Generate animation video
-        wsManager.emitProgress(jobId, 10, 'generating', 'Recording animation...');
-        const videoBuffer = await recorder.recordVideo(script, '', duration, 30);
-        if (VERBOSE_LOGGING) console.log(`Generated animation video: ${videoBuffer.length} bytes`);
-        wsManager.emitProgress(jobId, 80, 'generating', 'Animation recording completed');
+        // Generate animation video with Remotion
+        wsManager.emitProgress(jobId, 50, 'generating', 'Generating animation video...');
+        const videoBuffer = await generateIllustrationVideoWithRemotion(script, audioBuffer);
+        // console.log(`Generated animation video: ${videoBuffer.length} bytes`);
+        wsManager.emitProgress(jobId, 90, 'generating', 'Animation video generated');
 
         // Calculate duration in seconds
-        const durationSec = Math.round(duration / 1000);
-        wsManager.emitProgress(jobId, 85, 'generating', 'Calculating video duration...');
+        const durationSec = Math.round(animationScript.totalDuration / 1000);
 
         // Store video in database
         const videoId = await storeVideo(jobId, walletAddress, videoBuffer, durationSec);
-        if (VERBOSE_LOGGING) console.log('Stored animation video in database:', videoId);
-        wsManager.emitProgress(jobId, 90, 'generating', 'Storing video in database...');
+        // console.log('Stored animation video with voice over in database:', videoId);
+        wsManager.emitProgress(jobId, 95, 'generating', 'Storing video in database...');
 
         // Update job status to completed
         await updateJobStatus(jobId, 'completed');
@@ -105,8 +140,6 @@ async function processAnimationGeneration(jobId: string, walletAddress: string, 
 
         // Emit error
         wsManager.emitError(jobId, String(error));
-    } finally {
-        await recorder.close();
     }
 }
 
@@ -127,9 +160,9 @@ const generateAnimationHandler = async (req: Request, res: Response): Promise<vo
             return;
         }
 
-        if (VERBOSE_LOGGING) console.log('weaveit-generator: Processing animation request:', { walletAddress, scriptLength: script.length });
+        // console.log('weaveit-generator: Processing animation request:', { walletAddress, scriptLength: script.length });
 
-        // Check credit balance (animation costs 2 credits)
+        // Check credit balance (animation with voice over costs 3 credits)
         const ANIMATION_COST = 2;
         const newBalance = await deductUserPoints(walletAddress, ANIMATION_COST);
         if (newBalance === null) {
@@ -143,11 +176,11 @@ const generateAnimationHandler = async (req: Request, res: Response): Promise<vo
 
         // Generate title automatically based on script content (simple version)
         const title = script.split(' ').slice(0, 5).join(' ') + '...';
-        if (VERBOSE_LOGGING) console.log('Generated title:', title);
+        // console.log('Generated title:', title);
 
         // Create job in database with job_type = 'animation'
         jobId = await createVideoJob(walletAddress, script, title, 'animation');
-        if (VERBOSE_LOGGING) console.log('Created animation job:', jobId);
+        // console.log('Created animation job:', jobId);
 
         // Update status to generating
         await updateJobStatus(jobId, 'generating');

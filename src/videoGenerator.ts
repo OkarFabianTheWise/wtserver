@@ -1,9 +1,13 @@
+import { generateIllustrationVideoWithRemotion } from './remotionVideoGenerator.js';
 import ffmpeg from 'fluent-ffmpeg';
 import fs from 'fs';
 import path from 'path';
-import os, { userInfo } from 'os';
+import os from 'os';
+import { fileURLToPath } from 'url';
 import { CanvasRenderingContext2D, createCanvas } from 'canvas';
 import { saveScrollImage, saveScrollVideo } from './db.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const ffmpegPath = "/usr/bin/ffmpeg";
 const ffprobePath = "/usr/bin/ffprobe";
@@ -23,7 +27,7 @@ function getAudioDuration(filePath: string): Promise<number> {
         return;
       }
       const duration = metadata.format.duration || 0;
-      console.log(`🎵 Audio duration detected: ${duration.toFixed(3)}s`);
+      // console.log(`🎵 Audio duration detected: ${duration.toFixed(3)}s`);
       resolve(duration);
     });
   });
@@ -220,7 +224,7 @@ function concatSlideVideos(videoPaths: string[], outputPath: string): Promise<vo
   const fileList = videoPaths.map(p => `file '${path.basename(p)}'`).join('\n');
   fs.writeFileSync(concatListPath, fileList);
 
-  console.log(`🔗 Concatenating ${videoPaths.length} video clips...`);
+  // console.log(`🔗 Concatenating ${videoPaths.length} video clips...`);
 
   return new Promise((resolve, reject) => {
     ffmpeg()
@@ -239,7 +243,7 @@ function concatSlideVideos(videoPaths: string[], outputPath: string): Promise<vo
       .output(outputPath)
       .on('progress', (progress) => {
         if (progress.percent) {
-          console.log(`⏳ Concatenation progress: ${Math.round(progress.percent)}%`);
+          // console.log(`⏳ Concatenation progress: ${Math.round(progress.percent)}%`);
         }
       })
       .on('end', () => {
@@ -267,15 +271,15 @@ function concatSlideVideos(videoPaths: string[], outputPath: string): Promise<vo
  */
 function mergeWithAudio(videoPath: string, audioPath: string, outputPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    console.log(`🎵 Merging video with audio with proper sync...`);
+    // console.log(`🎵 Merging video with audio with proper sync...`);
 
     // First, get both durations to ensure they match
     Promise.all([
       getVideoDuration(videoPath),
       getAudioDuration(audioPath)
     ]).then(([videoDuration, audioDuration]) => {
-      console.log(`📹 Video duration: ${videoDuration.toFixed(3)}s`);
-      console.log(`🎵 Audio duration: ${audioDuration.toFixed(3)}s`);
+      // console.log(`📹 Video duration: ${videoDuration.toFixed(3)}s`);
+      // console.log(`🎵 Audio duration: ${audioDuration.toFixed(3)}s`);
 
       ffmpeg()
         .addInput(videoPath)
@@ -296,11 +300,11 @@ function mergeWithAudio(videoPath: string, audioPath: string, outputPath: string
         .output(outputPath)
         .on('progress', (progress) => {
           if (progress.percent) {
-            console.log(`⏳ Audio merge progress: ${Math.round(progress.percent)}%`);
+            // console.log(`⏳ Audio merge progress: ${Math.round(progress.percent)}%`);
           }
         })
         .on('end', () => {
-          console.log(`✅ Audio merge completed: ${path.basename(outputPath)}`);
+          // console.log(`✅ Audio merge completed: ${path.basename(outputPath)}`);
           resolve();
         })
         .on('error', (err) => {
@@ -342,19 +346,19 @@ export async function generateVideo(tutorialText: string, audioPath: string, fin
   }
 
   try {
-    console.log('🚀 Starting video generation...');
+    // console.log('🚀 Starting video generation...');
 
     // Copy audio file
     fs.copyFileSync(audioPath, ttsPath);
-    console.log('📋 Audio file copied');
+    // console.log('📋 Audio file copied');
 
     // Get actual audio duration FIRST
     const actualAudioDuration = await getAudioDuration(ttsPath);
-    console.log(`⏱️  Actual audio duration: ${actualAudioDuration.toFixed(3)}s`);
+    // console.log(`⏱️  Actual audio duration: ${actualAudioDuration.toFixed(3)}s`);
 
     // Generate slides with weights
     const { slides, weights } = await generateSlides(tutorialText, outputDir);
-    console.log(`📊 Generated ${slides.length} slides`);
+    // console.log(`📊 Generated ${slides.length} slides`);
 
     // Calculate precise durations based on actual audio length with extra buffer
     const slideDurations = weights.map(weight => {
@@ -378,7 +382,7 @@ export async function generateVideo(tutorialText: string, audioPath: string, fin
     // console.log('⏱️  Slide durations (with 30% buffer):');
 
     finalSlideDurations.forEach((duration, i) => {
-      console.log(`   Slide ${i + 1}: ${duration.toFixed(3)}s (${(weights[i] * 100).toFixed(1)}% base + buffer)`);
+      // console.log(`   Slide ${i + 1}: ${duration.toFixed(3)}s (${(weights[i] * 100).toFixed(1)}% base + buffer)`);
     });
 
     // Create video clips for each slide with buffered durations
@@ -423,7 +427,7 @@ export async function generateVideo(tutorialText: string, audioPath: string, fin
 
     // Merge with audio
     await mergeWithAudio(concatVideoPath, ttsPath, finalOutputPath);
-    console.log(`✅ Final tutorial video saved to: ${finalOutputPath}`);
+    // console.log(`✅ Final tutorial video saved to: ${finalOutputPath}`);
 
     // Cleanup temporary files
     const filesToCleanup = [
@@ -547,7 +551,7 @@ export async function generateScrollingScriptVideo(script: string, audioPath: st
 
   // Validate tall image
   const imageStats = fs.statSync(tallImagePath);
-  console.log(`🖼️  Tall image created: ${imageStats.size} bytes, ${width}x${totalHeight}px`);
+  // console.log(`🖼️  Tall image created: ${imageStats.size} bytes, ${width}x${totalHeight}px`);
   if (imageStats.size < 10000) { // Less than 10KB is probably corrupted
     throw new Error(`Tall image too small: ${imageStats.size} bytes`);
   }
@@ -626,55 +630,53 @@ export async function generateScrollingScriptVideo(script: string, audioPath: st
   // Cleanup temp files
   fs.unlinkSync(tallImagePath);
   fs.unlinkSync(tempVideoPath);
-  console.log(`✅ Scrolling video created at ${outputPath}`);
+  // console.log(`✅ Scrolling video created at ${outputPath}`);
 }
 
 export async function generateScrollingScriptVideoBuffer(script: string, audioBuffer: Buffer): Promise<Buffer> {
+  // console.log('🎬 Generating scrolling script video with slides and audio...');
+
   const tempDir = os.tmpdir();
-  const tempId = `scroll-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const tempId = `video-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const audioPath = path.join(tempDir, `${tempId}.mp3`);
-  const videoPath = path.join(tempDir, `${tempId}.mp4`);
+  const outputPath = path.join(tempDir, `${tempId}_output.mp4`);
 
   try {
+    // Write audio buffer to temp file
     fs.writeFileSync(audioPath, audioBuffer);
-    await generateScrollingScriptVideo(script, audioPath, videoPath);
 
-    // Validate the generated video file
-    if (!fs.existsSync(videoPath)) {
-      throw new Error('Video file was not created');
+    // Generate video with slides from script
+    await generateVideo(script, audioPath, outputPath);
+
+    // Read the final video buffer
+    const videoBuffer = fs.readFileSync(outputPath);
+
+    // Clean up temp files
+    try {
+      fs.unlinkSync(audioPath);
+    } catch (err) {
+      // Ignore cleanup errors
     }
-
-    const stats = fs.statSync(videoPath);
-    if (stats.size < 1000) { // Less than 1KB is probably corrupted
-      throw new Error(`Video file too small: ${stats.size} bytes`);
-    }
-
-    const videoBuffer = fs.readFileSync(videoPath);
-    // console.log(`📦 Video buffer created: ${videoBuffer.length} bytes`);
-    // console.log(`📦 First 20 bytes: ${videoBuffer.slice(0, 20).toString('hex')}`);
-    // console.log(`📦 Is MP4 header: ${videoBuffer.slice(4, 8).toString() === 'ftyp'}`);
-
-    if (videoBuffer.length < 1000) {
-      throw new Error(`Video buffer too small: ${videoBuffer.length} bytes`);
-    }
-
-    if (videoBuffer.slice(4, 8).toString() !== 'ftyp') {
-      console.error('❌ Video buffer does not have MP4 header!');
-      console.error('Full header:', videoBuffer.slice(0, 20).toString('hex'));
+    try {
+      fs.unlinkSync(outputPath);
+    } catch (err) {
+      // Ignore cleanup errors
     }
 
     return videoBuffer;
-  } finally {
-    // Cleanup temp files
-    [audioPath, videoPath].forEach(f => {
-      if (fs.existsSync(f)) {
-        try {
-          fs.unlinkSync(f);
-        } catch (err) {
-          console.error(`Error cleaning up ${f}:`, err);
-        }
-      }
-    });
+  } catch (error) {
+    // Clean up temp files on error
+    try {
+      if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+    } catch (err) {
+      // Ignore cleanup errors
+    }
+    try {
+      if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+    } catch (err) {
+      // Ignore cleanup errors
+    }
+    throw error;
   }
 }
 

@@ -78,9 +78,9 @@ app.get('/api/videos/:videoId', async (req, res) => {
       return;
     }
 
-    console.log(`🎬 Serving video ${videoId}: ${videoBuffer.length} bytes`);
-    console.log(`🎬 First 20 bytes: ${videoBuffer.slice(0, 20).toString('hex')}`);
-    console.log(`🎬 Is MP4 header: ${videoBuffer.slice(4, 8).toString() === 'ftyp'}`);
+    // console.log(`🎬 Serving video ${videoId}: ${videoBuffer.length} bytes`);
+    // console.log(`🎬 First 20 bytes: ${videoBuffer.slice(0, 20).toString('hex')}`);
+    // console.log(`🎬 Is MP4 header: ${videoBuffer.slice(4, 8).toString() === 'ftyp'}`);
 
     // Set proper headers for video streaming
     res.setHeader('Content-Type', 'video/mp4');

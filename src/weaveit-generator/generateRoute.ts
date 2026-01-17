@@ -52,7 +52,7 @@ async function sendWebhook(jobId: string, status: string, videoId?: string, dura
     if (!response.ok) {
       console.error(`Webhook failed: ${response.status} ${response.statusText}`);
     } else {
-      console.log(`✅ Webhook sent for job ${jobId}: ${status}`);
+      // console.log(`✅ Webhook sent for job ${jobId}: ${status}`);
     }
   } catch (err) {
     console.error('Error sending webhook:', err);
@@ -62,7 +62,7 @@ async function sendWebhook(jobId: string, status: string, videoId?: string, dura
 // Background processing function
 async function processVideoGeneration(jobId: string, walletAddress: string, script: string, explanation: string) {
   try {
-    if (VERBOSE_LOGGING) console.log(`🚀 Starting background processing for job ${jobId}`);
+    // if (VERBOSE_LOGGING) console.log(`🚀 Starting background processing for job ${jobId}`);
 
     // Emit initial progress
     wsManager.emitProgress(jobId, 0, 'generating', 'Starting video generation...');
@@ -71,24 +71,24 @@ async function processVideoGeneration(jobId: string, walletAddress: string, scri
     wsManager.emitProgress(jobId, 2, 'generating', 'Initializing audio generation...');
     wsManager.emitProgress(jobId, 5, 'generating', 'Generating audio narration...');
     const audioBuffer = await generateSpeechBuffer(explanation);
-    if (VERBOSE_LOGGING) console.log(`Generated audio: ${audioBuffer.length} bytes`);
+    // if (VERBOSE_LOGGING) console.log(`Generated audio: ${audioBuffer.length} bytes`);
     wsManager.emitProgress(jobId, 10, 'generating', 'Audio narration completed');
 
     // Generate video buffer (uses temp files internally but returns buffer)
     wsManager.emitProgress(jobId, 15, 'generating', 'Preparing video creation...');
     wsManager.emitProgress(jobId, 20, 'generating', 'Creating video from script...');
     const videoBuffer = await generateScrollingScriptVideoBuffer(script, audioBuffer);
-    if (VERBOSE_LOGGING) console.log(`Generated video: ${videoBuffer.length} bytes`);
+    // if (VERBOSE_LOGGING) console.log(`Generated video: ${videoBuffer.length} bytes`);
     wsManager.emitProgress(jobId, 30, 'generating', 'Video creation completed');
 
     // Calculate duration from audio buffer (in seconds)
     const durationSec = estimateAudioDuration(audioBuffer);
-    if (VERBOSE_LOGGING) console.log(`Estimated duration: ${durationSec} seconds`);
+    // if (VERBOSE_LOGGING) console.log(`Estimated duration: ${durationSec} seconds`);
     wsManager.emitProgress(jobId, 35, 'generating', 'Calculating video duration...');
 
     // Store video in database
     const videoId = await storeVideo(jobId, walletAddress, videoBuffer, durationSec);
-    if (VERBOSE_LOGGING) console.log('Stored video in database:', videoId);
+    // if (VERBOSE_LOGGING) console.log('Stored video in database:', videoId);
     wsManager.emitProgress(jobId, 40, 'generating', 'Storing video in database...');
 
     // Update job status to completed
@@ -129,7 +129,7 @@ const generateHandler = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    if (VERBOSE_LOGGING) console.log('weaveit-generator: Processing tutorial request:', { walletAddress, scriptLength: script.length, hasPrompt: !!prompt });
+    // if (VERBOSE_LOGGING) console.log('weaveit-generator: Processing tutorial request:', { walletAddress, scriptLength: script.length, hasPrompt: !!prompt });
 
     // Check credit balance before proceeding (video costs 2 credits)
     const VIDEO_COST = 2;
@@ -145,11 +145,11 @@ const generateHandler = async (req: Request, res: Response): Promise<void> => {
 
     // Generate title automatically based on script content
     const title = await generateTitle(script);
-    if (VERBOSE_LOGGING) console.log('Generated title:', title);
+    // if (VERBOSE_LOGGING) console.log('Generated title:', title);
 
     // Create job in database with job_type = 'video'
     jobId = await createVideoJob(walletAddress, script, title, 'video');
-    if (VERBOSE_LOGGING) console.log('Created job:', jobId);
+    // if (VERBOSE_LOGGING) console.log('Created job:', jobId);
 
     // Update status to generating
     await updateJobStatus(jobId, 'generating');

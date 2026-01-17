@@ -352,7 +352,7 @@ export async function generateNarrativeVideo(
   }
 
   try {
-    console.log('🎨 Generating narrative animation frames...');
+    // console.log('🎨 Generating narrative animation frames...');
 
     // Generate frames for all scenes
     let frameIndex = 0;
@@ -360,14 +360,14 @@ export async function generateNarrativeVideo(
       frameIndex = await generateSceneFrames(scene, frameDir, frameIndex);
     }
 
-    console.log(`✅ Generated ${frameIndex} frames from ${scenes.length} scenes`);
+    // console.log(`✅ Generated ${frameIndex} frames from ${scenes.length} scenes`);
 
     // Get audio duration
     const audioDuration = await getAudioDuration(audioPath);
-    console.log(`⏱️  Audio duration: ${audioDuration.toFixed(2)}s`);
+    // console.log(`⏱️  Audio duration: ${audioDuration.toFixed(2)}s`);
 
     // Create video from frames
-    console.log('🎬 Creating video from frames...');
+    // console.log('🎬 Creating video from frames...');
     await new Promise<void>((resolve, reject) => {
       ffmpeg()
         .input(path.join(frameDir, 'frame_%06d.png'))
@@ -388,7 +388,7 @@ export async function generateNarrativeVideo(
     });
 
     const videoPath = outputPath.replace(/\.mp4$/, '_video.mp4');
-    console.log('🎵 Merging with audio...');
+    // console.log('🎵 Merging with audio...');
 
     // Merge video with audio
     await new Promise<void>((resolve, reject) => {
@@ -409,7 +409,7 @@ export async function generateNarrativeVideo(
         .run();
     });
 
-    console.log(`✅ Narrative animation video created: ${outputPath}`);
+    // console.log(`✅ Narrative animation video created: ${outputPath}`);
 
     // Cleanup temp files
     if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);

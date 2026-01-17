@@ -1,13 +1,38 @@
 import express from 'express';
 import crypto from 'crypto';
-import { VideoRecorder } from '../recorder.js';
+import { generateIllustrationVideoWithRemotion } from '../remotionVideoGenerator.js';
 import { createVideoJob, updateJobStatus, storeVideo, deductUserPoints } from '../db.js';
 import { wsManager } from '../websocket.js';
+import { generateSpeechBuffer } from '../textToSpeech.js';
+import OpenAI from 'openai';
+import { generateAnimationScript } from '../animationScriptGenerator.js';
 const router = express.Router();
 // Environment variables
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || 'default-webhook-secret';
 const WEBHOOK_URL = process.env.WEBHOOK_URL || 'http://localhost:3001/api/webhooks/job-update';
 const VERBOSE_LOGGING = process.env.VERBOSE_LOGGING === 'true';
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// Function to generate metaphorical explanation using OpenAI
+async function generateExplanation(code) {
+    const prompt = `Explain this code snippet using real-life scenarios and analogies, like sand, wind, market scenes, school scenes, etc. Make it engaging and illustrative for a 2D animation. Don't just read the code, explain what it does metaphorically.
+
+Code:
+${code}
+
+Provide a narrative explanation suitable for voice over and animation, around 100-200 words. Focus on creating vivid scenes that can be visualized.`;
+    const response = await openai.chat.completions.create({
+        model: 'gpt-4',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 300,
+    });
+    return response.choices[0].message.content?.trim() || 'Explanation not available.';
+}
+// Function to generate animation script using AI
+async function generateAnimationScriptForCode(code) {
+    const explanation = await generateExplanation(code);
+    // Use the explanation as the article for the animation script
+    return await generateAnimationScript(explanation);
+}
 // Helper function to estimate duration (fixed for animation)
 function estimateDuration(script) {
     // Simple estimation: 5 seconds base + 0.1s per word, max 30s
@@ -51,33 +76,36 @@ async function sendWebhook(jobId, status, videoId, duration, error) {
 }
 // Background processing function
 async function processAnimationGeneration(jobId, walletAddress, script) {
-    const recorder = new VideoRecorder();
     try {
         if (VERBOSE_LOGGING)
             console.log(`🚀 Starting background processing for animation job ${jobId}`);
         // Emit initial progress
         wsManager.emitProgress(jobId, 0, 'generating', 'Starting animation generation...');
-        // Initialize recorder
-        wsManager.emitProgress(jobId, 5, 'generating', 'Initializing video recorder...');
-        await recorder.initialize();
-        // Estimate duration
-        const duration = estimateDuration(script);
+        // Generate animation script
+        wsManager.emitProgress(jobId, 8, 'generating', 'Generating animation script...');
+        const animationScript = await generateAnimationScriptForCode(script);
         if (VERBOSE_LOGGING)
-            console.log(`📊 Estimated duration: ${duration}ms`);
-        // Generate animation video
-        wsManager.emitProgress(jobId, 10, 'generating', 'Recording animation...');
-        const videoBuffer = await recorder.recordVideo(script, '', duration, 30);
+            console.log(`Generated animation script:`, animationScript);
+        wsManager.emitProgress(jobId, 10, 'generating', 'Animation script generated');
+        // Generate voice over audio
+        wsManager.emitProgress(jobId, 15, 'generating', 'Generating voice over...');
+        const audioBuffer = await generateSpeechBuffer(animationScript.voiceover.text);
+        if (VERBOSE_LOGGING)
+            console.log(`Generated voice over audio: ${audioBuffer.length} bytes`);
+        wsManager.emitProgress(jobId, 40, 'generating', 'Voice over generated');
+        // Generate animation video with Remotion
+        wsManager.emitProgress(jobId, 50, 'generating', 'Generating animation video...');
+        const videoBuffer = await generateIllustrationVideoWithRemotion(script, audioBuffer);
         if (VERBOSE_LOGGING)
             console.log(`Generated animation video: ${videoBuffer.length} bytes`);
-        wsManager.emitProgress(jobId, 80, 'generating', 'Animation recording completed');
+        wsManager.emitProgress(jobId, 90, 'generating', 'Animation video generated');
         // Calculate duration in seconds
-        const durationSec = Math.round(duration / 1000);
-        wsManager.emitProgress(jobId, 85, 'generating', 'Calculating video duration...');
+        const durationSec = Math.round(animationScript.totalDuration / 1000);
         // Store video in database
         const videoId = await storeVideo(jobId, walletAddress, videoBuffer, durationSec);
         if (VERBOSE_LOGGING)
-            console.log('Stored animation video in database:', videoId);
-        wsManager.emitProgress(jobId, 90, 'generating', 'Storing video in database...');
+            console.log('Stored animation video with voice over in database:', videoId);
+        wsManager.emitProgress(jobId, 95, 'generating', 'Storing video in database...');
         // Update job status to completed
         await updateJobStatus(jobId, 'completed');
         // Send webhook
@@ -92,9 +120,6 @@ async function processAnimationGeneration(jobId, walletAddress, script) {
         await sendWebhook(jobId, 'failed', undefined, undefined, String(error));
         // Emit error
         wsManager.emitError(jobId, String(error));
-    }
-    finally {
-        await recorder.close();
     }
 }
 // POST /api/generate/animation
@@ -112,7 +137,7 @@ const generateAnimationHandler = async (req, res) => {
         }
         if (VERBOSE_LOGGING)
             console.log('weaveit-generator: Processing animation request:', { walletAddress, scriptLength: script.length });
-        // Check credit balance (animation costs 2 credits)
+        // Check credit balance (animation with voice over costs 3 credits)
         const ANIMATION_COST = 2;
         const newBalance = await deductUserPoints(walletAddress, ANIMATION_COST);
         if (newBalance === null) {
